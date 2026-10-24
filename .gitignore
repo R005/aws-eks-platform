@@ -1,0 +1,18 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+*.tfplan
+
+# Kubernetes / AWS
+kubeconfig*
+*.pem
+.env
+
+# macOS / editors
+.DS_Store
+.vscode/
+.envrc
