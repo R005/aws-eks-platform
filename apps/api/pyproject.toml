@@ -1,0 +1,40 @@
+[project]
+name = "task-tracker-api"
+version = "0.1.0"
+description = "REST API for the task tracker"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "alembic>=1.14",
+    "fastapi>=0.115",
+    "prometheus-client>=0.21",
+    # psycopg-binary wheels bundle libpq, so the distroless image needs no system libpq
+    "psycopg[binary]>=3.2",
+    "pydantic-settings>=2.6",
+    "sqlalchemy>=2.0",
+    "uvicorn>=0.32",
+]
+
+[dependency-groups]
+dev = [
+    # starlette.testclient is built on httpx2; plain httpx is deprecated there
+    "httpx2>=2.16",
+    "pytest>=8.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "api"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
