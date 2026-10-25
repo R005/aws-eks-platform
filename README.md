@@ -8,7 +8,7 @@ A production-style platform on **AWS EKS**, built entirely with code (Terraform,
 
 The app is deliberately small. The point of the project is the platform around it: networking, cluster, add-ons, secrets, CI/CD, DNS/TLS and observability, built the way a real team would build them.
 
-> Status: **planning**. Most of the structure below is planned and not built yet. See the [Roadmap](#roadmap).
+> Status: **in progress**. The `api` service runs locally with Docker Compose; the AWS platform is not built yet. See the [Roadmap](#roadmap).
 
 ## Architecture
 
@@ -65,13 +65,13 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/README.md).
 
 ## Repo layout (planned)
 
-> Planned. Only `README.md`, `CLAUDE.md`, `docs/adr/` and the pre-commit config exist today.
+> Partly built. `apps/api/`, `docker-compose.yml`, `docs/adr/` and the repo tooling exist today; the rest is planned.
 
 ```text
 .
 ├── apps/
-│   ├── web/                  # FastAPI web service + Dockerfile
-│   └── api/                  # FastAPI api service + Dockerfile
+│   ├── web/                  # FastAPI web service + Dockerfile (planned)
+│   └── api/                  # FastAPI api service + Dockerfile, OPERATIONS.md
 ├── helm/
 │   ├── web/                  # Helm chart (+ values-dev.yaml)
 │   ├── api/
@@ -85,6 +85,8 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/README.md).
 │       └── addons/           # Helm releases for cluster add-ons + IRSA roles
 ├── docs/adr/                 # Architecture Decision Records
 ├── .gitlab-ci.yml            # CI/CD pipeline
+├── docker-compose.yml        # local stack: postgres, migrate, api
+├── .env.example              # template for the gitignored .env
 ├── .pre-commit-config.yaml
 ├── CLAUDE.md
 └── README.md
@@ -95,8 +97,8 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/README.md).
 Tools (macOS, Homebrew):
 
 ```bash
-brew install awscli terraform kubectl helm pre-commit tflint gitleaks direnv
-# Docker Desktop (or another engine) with buildx, for multi-arch image builds
+brew install awscli terraform kubectl helm pre-commit tflint gitleaks direnv uv
+# Docker Desktop (or another engine) with buildx and Compose v2, for local runs and multi-arch builds
 ```
 
 - Terraform **>= 1.11** (S3 native state locking, see [ADR 0003](docs/adr/0003-s3-native-state-locking.md))
@@ -114,7 +116,86 @@ aws sts get-caller-identity           # check which identity is active
 
 The Terraform provider blocks never hardcode a profile, account ID or region. All of those come from the environment and variables.
 
-## Local development / pre-commit
+## Local development
+
+The `api` runs locally with Docker Compose: `postgres` starts and becomes healthy, a one-shot `migrate` container applies the Alembic migrations, then `api` starts. No AWS access is needed.
+
+### Run the stack
+
+```bash
+cp .env.example .env                       # .env is gitignored
+sed -i '' "s|^DB_PASSWORD=$|DB_PASSWORD=$(openssl rand -base64 24)|" .env   # generate a password
+docker compose up --build -d
+docker compose ps -a                       # postgres healthy, migrate exited (0), api healthy
+```
+
+Compose refuses to start while `DB_PASSWORD` is empty. The api listens on `127.0.0.1:8000` only, and Postgres is not published to the host (`docker compose exec postgres psql -U tasks tasks` for a shell).
+
+### Try it
+
+```bash
+curl -s localhost:8000/healthz                       # liveness
+curl -s localhost:8000/readyz                        # readiness (checks the database)
+curl -s -XPOST localhost:8000/tasks -H 'content-type: application/json' -d '{"title":"first task"}'
+curl -s localhost:8000/tasks
+curl -s -XPATCH localhost:8000/tasks/1 -H 'content-type: application/json' -d '{"done":true}'
+curl -s -XDELETE localhost:8000/tasks/1
+curl -s localhost:8000/metrics | grep '^http_requests_total'
+docker compose logs -f api                           # JSON logs
+```
+
+Stress drills (for autoscaling and OOM tests later): set `ENABLE_DEBUG_ENDPOINTS=true` in `.env`, run `docker compose up -d api`, then `curl -XPOST 'localhost:8000/debug/load/cpu?seconds=30&workers=2'` and watch `docker stats`. Set it back to `false` afterwards.
+
+The runtime contract (env vars, probes, shutdown, logs, metrics, resource usage) is in [`apps/api/OPERATIONS.md`](apps/api/OPERATIONS.md).
+
+### Unit tests
+
+```bash
+cd apps/api
+uv run pytest            # installs Python 3.13 and the locked dev dependencies on first run
+```
+
+The tests use an in-memory SQLite database, so they need neither Postgres nor Docker.
+
+### Stop and clean up
+
+```bash
+docker compose down        # stop and remove containers; keeps the pgdata volume
+docker compose down -v     # also delete the database volume (all local data)
+```
+
+Local only, no AWS cost.
+
+### Files
+
+| File | Purpose |
+| --- | --- |
+| `docker-compose.yml` | Local stack: `postgres` (healthcheck, `pgdata` volume), one-shot `migrate`, hardened `api` |
+| `.env.example` | Template for the gitignored `.env`; lists every variable, `DB_PASSWORD` left empty |
+| `apps/api/Dockerfile` | Multi-stage build: uv + Debian builder, distroless non-root runtime, digest-pinned bases |
+| `apps/api/.dockerignore` | Keeps tests, caches, local venvs and `.env` out of the build context |
+| `apps/api/pyproject.toml` | Dependencies, Python version, ruff and pytest settings |
+| `apps/api/uv.lock` | Exact, hashed versions of every dependency |
+| `apps/api/OPERATIONS.md` | Operational contract: port, env vars, probes, migrations, shutdown, logs, metrics, resources |
+| `apps/api/alembic.ini` | Points Alembic at `migrations/`; holds no connection details |
+| `apps/api/migrations/env.py` | Runs migrations with the api's settings and JSON logging |
+| `apps/api/migrations/script.py.mako` | Template for new migration files |
+| `apps/api/migrations/versions/` | Versioned schema migrations (`0001` creates `tasks`) |
+| `apps/api/src/api/__init__.py`, `routes/__init__.py` | Package markers |
+| `apps/api/src/api/__main__.py` | Entrypoint: uvicorn with JSON logs and a 20 s graceful shutdown |
+| `apps/api/src/api/main.py` | App factory: lifespan, request logging and metrics middleware, routers |
+| `apps/api/src/api/config.py` | Settings from environment variables; the password is required and never echoed |
+| `apps/api/src/api/log_config.py` | JSON log formatter and logging config for the app, uvicorn and Alembic |
+| `apps/api/src/api/db.py` | SQLAlchemy engine (pool, pre-ping, connect timeout) and per-request session |
+| `apps/api/src/api/models.py` | `tasks` table model |
+| `apps/api/src/api/schemas.py` | Request and response models with validation |
+| `apps/api/src/api/metrics.py` | Prometheus request counter and latency histogram |
+| `apps/api/src/api/routes/health.py` | `/healthz`, `/readyz`, `/metrics` |
+| `apps/api/src/api/routes/tasks.py` | Task CRUD endpoints |
+| `apps/api/src/api/routes/debug.py` | CPU and memory stress endpoints, mounted only when enabled |
+| `apps/api/tests/` | Unit tests (health, tasks, debug, config) with a SQLite session override |
+
+### pre-commit
 
 ```bash
 pre-commit install            # installs both the pre-commit and commit-msg hooks
@@ -170,7 +251,7 @@ terraform -chdir=terraform/stacks/network destroy   # NAT Gateway, Elastic IP
 - [ ] **M3**: `network` stack: VPC, public/private subnets across 2 AZs, single NAT Gateway
 - [ ] **M4**: `eks` stack: EKS cluster, managed node group (amd64), OIDC provider
 - [ ] **M5**: `addons` stack: EBS CSI driver, AWS Load Balancer Controller, ExternalDNS, External Secrets Operator, metrics-server (IRSA roles)
-- [ ] **M6**: `web` and `api` FastAPI apps, Dockerfiles, multi-arch images in ECR
+- [ ] **M6**: `web` and `api` FastAPI apps, Dockerfiles, multi-arch images in ECR (`api` + local Compose stack done)
 - [ ] **M7**: Helm charts for `web`, `api` and the `postgres` StatefulSet
 - [ ] **M8**: GitLab CI: lint, test, build, scan, push, `helm upgrade --install`
 - [ ] **M9**: Gateway API + Route 53 (`<app>.lab.<domain>`) + ACM TLS

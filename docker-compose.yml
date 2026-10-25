@@ -1,0 +1,89 @@
+# Local stack: postgres -> migrate (one-shot) -> api.
+# Values come from .env (copy .env.example). Usage: docker compose up --build
+
+name: eks-platform
+
+# Environment shared by the api and the migration job (same image, same settings).
+x-api-env: &api-env
+  DB_HOST: ${DB_HOST:-postgres}
+  DB_PORT: ${DB_PORT:-5432}
+  DB_NAME: ${DB_NAME:?set DB_NAME in .env}
+  DB_USER: ${DB_USER:?set DB_USER in .env}
+  DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  ENABLE_DEBUG_ENDPOINTS: ${ENABLE_DEBUG_ENDPOINTS:-false}
+
+# Container hardening, mirroring the pod securityContext planned for Kubernetes.
+x-hardening: &hardening
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  postgres:
+    image: postgres:18.6-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+    environment:
+      POSTGRES_DB: ${DB_NAME:?set DB_NAME in .env}
+      POSTGRES_USER: ${DB_USER:?set DB_USER in .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      # Postgres 18+ keeps data under /var/lib/postgresql/<major>/; mount the parent.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      # -h 127.0.0.1: during first-run init Postgres listens on the Unix socket only,
+      # so a TCP check stays unhealthy until the real server is up.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+      start_interval: 1s
+    restart: unless-stopped
+
+  migrate:
+    # Same image as the api, built once by the api service; never pulled (it's local-only).
+    image: eks-platform-api:dev
+    pull_policy: never
+    entrypoint: ["/app/.venv/bin/alembic"]
+    command: ["upgrade", "head"]
+    environment: *api-env
+    <<: *hardening
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: ./apps/api
+    image: eks-platform-api:dev
+    environment: *api-env
+    <<: *hardening
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # Readiness, not liveness: "healthy" means the api can reach the database.
+      # Python instead of curl because the distroless image has no curl and no shell.
+      test:
+        - CMD
+        - /app/.venv/bin/python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    # Matches the Kubernetes default terminationGracePeriodSeconds; the app drains within 20s.
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
