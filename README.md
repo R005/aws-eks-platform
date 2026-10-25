@@ -1,1 +1,190 @@
 # aws-eks-platform
+
+A production-style platform on **AWS EKS**, built entirely with code (Terraform, Helm, GitLab CI). It runs a small Python 3-tier **task tracker**:
+
+- **web**: FastAPI service that serves the UI and calls the api
+- **api**: FastAPI service with the REST API and business logic
+- **db**: PostgreSQL (a StatefulSet first, RDS later, see [ADR 0002](docs/adr/0002-postgres-statefulset-first-rds-later.md))
+
+The app is deliberately small. The point of the project is the platform around it: networking, cluster, add-ons, secrets, CI/CD, DNS/TLS and observability, built the way a real team would build them.
+
+> Status: **planning**. Most of the structure below is planned and not built yet. See the [Roadmap](#roadmap).
+
+## Architecture
+
+```text
+                              Internet
+                                 |
+                                 |  https://<app>.lab.<domain>
+                                 v
+             Route 53 hosted zone: lab.<domain>  (records by ExternalDNS)
+                                 |
++- VPC (us-east-1) ------------------------------------------------------+
+| Public subnets (2 AZs)                                                 |
+|  +--------------------------------+      +--------------------+        |
+|  | ALB (Gateway API via AWS LBC)  |      | NAT Gateway (x1)   |        |
+|  | TLS: ACM certificate           |      |                    |        |
+|  +--------------------------------+      +--------------------+        |
+|                 |                                   ^                  |
+| Private subnets | HTTPS -> web                      | egress           |
+|  +------------------------------------------------------------------+  |
+|  | EKS managed node group (amd64)                                   |  |
+|  |                                                                  |  |
+|  |  ns task-tracker:                                                |  |
+|  |    [web: FastAPI] --> [api: FastAPI] --> [postgres: StatefulSet] |  |
+|  |                                                |                 |  |
+|  |                                          PVC (EBS gp3)           |  |
+|  |                                                                  |  |
+|  |  platform add-ons: AWS LBC, ExternalDNS, External Secrets,       |  |
+|  |                    EBS CSI, metrics-server,                      |  |
+|  |                    kube-prometheus-stack                         |  |
+|  +------------------------------------------------------------------+  |
++------------------------------------------------------------------------+
+
+  GitLab.com CI --build/push (multi-arch)--> ECR --pull--> nodes
+        \------- helm upgrade --install -----------------> EKS API
+  AWS Secrets Manager --(External Secrets + IRSA)--> Kubernetes Secrets
+  S3 bucket: Terraform state (S3 native locking)
+```
+
+Traffic flow: client → Route 53 → ALB (provisioned by the AWS Load Balancer Controller from Gateway API resources) → `web` → `api` → `postgres`. Nodes sit in private subnets and reach the internet through the NAT Gateway.
+
+Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/README.md).
+
+## Tech stack
+
+| Area | Tools |
+| --- | --- |
+| Cloud | AWS: VPC, EKS, ECR, Route 53, ACM, Secrets Manager, S3, IAM |
+| Infrastructure as Code | Terraform (stacks: `bootstrap`, `network`, `eks`, `addons`) |
+| Packaging and deploy | Docker (buildx, multi-arch), Helm, GitLab CI/CD (GitLab.com shared runners) |
+| Application | Python, FastAPI, PostgreSQL |
+| Cluster add-ons | AWS Load Balancer Controller (Gateway API), ExternalDNS, External Secrets Operator, EBS CSI driver, metrics-server |
+| Observability | kube-prometheus-stack (Prometheus, Grafana, Alertmanager) |
+| Quality and security | pre-commit, gitleaks, tflint, ruff, Conventional Commits |
+
+## Repo layout (planned)
+
+> Planned. Only `README.md`, `CLAUDE.md`, `docs/adr/` and the pre-commit config exist today.
+
+```text
+.
+├── apps/
+│   ├── web/                  # FastAPI web service + Dockerfile
+│   └── api/                  # FastAPI api service + Dockerfile
+├── helm/
+│   ├── web/                  # Helm chart (+ values-dev.yaml)
+│   ├── api/
+│   └── postgres/             # StatefulSet, headless Service, PVC template
+├── terraform/
+│   ├── modules/              # reusable modules
+│   └── stacks/               # one root module (and one state file) per layer
+│       ├── bootstrap/        # S3 state bucket
+│       ├── network/          # VPC, subnets, NAT Gateway
+│       ├── eks/              # EKS cluster, managed node group, OIDC provider
+│       └── addons/           # Helm releases for cluster add-ons + IRSA roles
+├── docs/adr/                 # Architecture Decision Records
+├── .gitlab-ci.yml            # CI/CD pipeline
+├── .pre-commit-config.yaml
+├── CLAUDE.md
+└── README.md
+```
+
+## Prerequisites
+
+Tools (macOS, Homebrew):
+
+```bash
+brew install awscli terraform kubectl helm pre-commit tflint gitleaks direnv
+# Docker Desktop (or another engine) with buildx, for multi-arch image builds
+```
+
+- Terraform **>= 1.11** (S3 native state locking, see [ADR 0003](docs/adr/0003-s3-native-state-locking.md))
+- AWS access goes through **IAM Identity Center (SSO)** only. There are no access keys and no default profile.
+
+AWS profile through direnv:
+
+```bash
+aws configure sso                     # create the profile, named: lab-dev
+echo 'export AWS_PROFILE=lab-dev' > .envrc   # .envrc is gitignored
+direnv allow
+aws sso login                         # run again whenever the token expires
+aws sts get-caller-identity           # check which identity is active
+```
+
+The Terraform provider blocks never hardcode a profile, account ID or region. All of those come from the environment and variables.
+
+## Local development / pre-commit
+
+```bash
+pre-commit install            # installs both the pre-commit and commit-msg hooks
+pre-commit run --all-files    # run every hook against the whole repo
+```
+
+| Hook | Purpose |
+| --- | --- |
+| trailing-whitespace, end-of-file-fixer | Whitespace hygiene |
+| check-yaml | Valid YAML (Helm `templates/` excluded) |
+| check-added-large-files, check-merge-conflict | Block oversized files and conflict markers |
+| detect-private-key, gitleaks | Block committed secrets |
+| terraform_fmt, terraform_validate, terraform_tflint | Terraform formatting, validation and linting |
+| ruff-check, ruff-format | Python linting and formatting |
+| conventional-pre-commit (commit-msg) | Enforce Conventional Commit messages |
+
+Git workflow: trunk-based, with a protected `main`, short-lived branches, Conventional Commits, and squash plus fast-forward merges. See [ADR 0009](docs/adr/0009-trunk-based-git-workflow.md).
+
+## Cost estimate and teardown policy
+
+Approximate on-demand prices for **us-east-1** while the full stack is running. Check the current AWS pricing pages before relying on them.
+
+| Resource | Approx. cost |
+| --- | --- |
+| EKS control plane (standard support) | $0.10/h, about $73/month |
+| NAT Gateway (x1) | $0.045/h plus $0.045/GB processed, about $33/month + data |
+| 2 x t3.medium worker nodes | about $61/month |
+| Application Load Balancer | about $16/month + LCUs |
+| Public IPv4 addresses (NAT + ALB) | $0.005/h each, about $11/month |
+| EBS gp3 (node root volumes + Postgres PVC) | a few $/month |
+| Route 53 zone, Secrets Manager, ECR, S3 state | about $1–3/month |
+| **Total** | **about $200/month, roughly $6–7 per day** |
+
+> Lab shortcuts: a single NAT Gateway ([ADR 0007](docs/adr/0007-single-nat-gateway-in-lab.md)), a small node group, and in-cluster Postgres ([ADR 0002](docs/adr/0002-postgres-statefulset-first-rds-later.md)). A production setup costs noticeably more.
+> Keep the cluster on an EKS version in standard support. Extended support raises the control plane price to $0.60/h.
+
+**Teardown policy**: destroy the costly stacks at the end of **every** session, in reverse order:
+
+```bash
+terraform -chdir=terraform/stacks/addons  destroy   # removes the ALB created by the controller first
+terraform -chdir=terraform/stacks/eks     destroy
+terraform -chdir=terraform/stacks/network destroy   # NAT Gateway, Elastic IP
+```
+
+- Keep `bootstrap` (the state bucket) and the Route 53 hosted zone. They cost almost nothing, and DNS delegation is slow to redo.
+- Afterwards, check the console (read-only) for leftover load balancers, EBS volumes, ENIs and Elastic IPs.
+
+## Roadmap
+
+- [x] **M0**: Repository, `.gitignore`, pre-commit hooks
+- [x] **M1**: Project documentation and ADRs
+- [ ] **M2**: `bootstrap` stack: S3 state bucket (versioned, encrypted, public access blocked)
+- [ ] **M3**: `network` stack: VPC, public/private subnets across 2 AZs, single NAT Gateway
+- [ ] **M4**: `eks` stack: EKS cluster, managed node group (amd64), OIDC provider
+- [ ] **M5**: `addons` stack: EBS CSI driver, AWS Load Balancer Controller, ExternalDNS, External Secrets Operator, metrics-server (IRSA roles)
+- [ ] **M6**: `web` and `api` FastAPI apps, Dockerfiles, multi-arch images in ECR
+- [ ] **M7**: Helm charts for `web`, `api` and the `postgres` StatefulSet
+- [ ] **M8**: GitLab CI: lint, test, build, scan, push, `helm upgrade --install`
+- [ ] **M9**: Gateway API + Route 53 (`<app>.lab.<domain>`) + ACM TLS
+- [ ] **M10**: Observability: kube-prometheus-stack, dashboards, alerts
+- [ ] **M11**: Move PostgreSQL from the StatefulSet to Amazon RDS
+- [ ] **M12**: Hardening: NetworkPolicies, Pod Security Admission, resource requests/limits, image scanning
+
+## Security notes
+
+- **No long-lived AWS credentials.** Humans use IAM Identity Center (SSO). Pods use IRSA ([ADR 0005](docs/adr/0005-irsa-for-pod-aws-access.md)). CI authenticates to AWS without static keys (method to be decided at M8).
+- **Secrets** live in AWS Secrets Manager. External Secrets Operator syncs them into Kubernetes Secrets ([ADR 0004](docs/adr/0004-external-secrets-operator.md)). Secrets never go in Git, Helm values or CI logs.
+- **Least privilege.** Each controller and app gets its own IAM role, scoped to its own ServiceAccount.
+- **Network.** Worker nodes run in private subnets. Only the ALB is internet-facing.
+- **Terraform state** sits in an encrypted, versioned S3 bucket with public access blocked. State is never committed or printed.
+- **Secret scanning** runs on every commit (gitleaks, detect-private-key).
+- **Public repository.** This repo is mirrored publicly, so it uses placeholders only (`<domain>`, `<account-id>`). It never contains real account IDs, emails, domains or internal URLs.
+- **Tagging.** Every AWS resource is tagged `Project`, `Env`, `Owner` and `ManagedBy` (through provider `default_tags`).
