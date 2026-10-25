@@ -2,17 +2,29 @@
 .terraform/
 *.tfstate
 *.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
 *.tfvars
 !*.tfvars.example
-crash.log
 *.tfplan
 
-# Kubernetes / AWS
-kubeconfig*
-*.pem
+# Secrets & local env
 .env
+.env.*
+*.pem
+*.key
+kubeconfig*
+.envrc
 
-# macOS / editors
+# Claude Code personal overrides (never shared)
+.claude/settings.local.json
+
+# OS / editor
 .DS_Store
 .vscode/
-.envrc
