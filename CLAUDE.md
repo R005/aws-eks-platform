@@ -46,3 +46,14 @@ docs/adr/                                        Architecture Decision Records
 ```
 
 Terraform stacks are applied in the order `bootstrap → network → eks → addons` and destroyed in reverse (keep `bootstrap` and the Route 53 zone).
+
+## Working mode for this project (fast mode)
+
+This overrides the user-level "one or two steps at a time" rule for this project.
+
+- Build app code, tests and docs without step-by-step explanations; give a short summary at the end.
+- For DevOps artifacts (Terraform, Helm, CI, Dockerfiles), finish with a short walkthrough of the key decisions, each tagged 🟢 (DevOps core) or 🟡 (skim).
+- Don't pause between steps unless an action needs me.
+- Commit your own work on the current feature branch in small Conventional Commits. Run pre-commit and fix failures; never use --no-verify.
+- Never commit to main and never push. I push and open merge requests.
+- Never run terraform apply/destroy/import, kubectl delete or helm uninstall. Give me the command instead.
