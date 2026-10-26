@@ -37,12 +37,12 @@ This repo is mirrored to a **public** GitHub repo. Never write sensitive data in
 ## Repo layout (planned)
 
 ```text
-apps/{web,api}/                                  FastAPI services + Dockerfiles
-helm/{web,api,postgres}/                         Helm charts (+ values-dev.yaml)
-terraform/modules/                               reusable modules
-terraform/stacks/{bootstrap,network,eks,addons}/ one root module + state per layer
-docs/adr/                                        Architecture Decision Records
-.gitlab-ci.yml                                   CI/CD pipeline
+apps/{web,api}/                       FastAPI services + Dockerfiles
+helm/{web,api,postgres}/              Helm charts (+ values-dev.yaml)
+infra/modules/                        reusable Terraform modules
+infra/{bootstrap,network,eks,addons}/ one Terraform root module + state per stack
+docs/adr/                             Architecture Decision Records
+.gitlab-ci.yml                        CI/CD pipeline
 ```
 
 Terraform stacks are applied in the order `bootstrap → network → eks → addons` and destroyed in reverse (keep `bootstrap` and the Route 53 zone).
