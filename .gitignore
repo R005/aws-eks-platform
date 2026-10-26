@@ -13,6 +13,8 @@ terraform.rc
 *.tfvars
 !*.tfvars.example
 *.tfplan
+tfplan
+**/backend.hcl
 
 # Secrets & local env
 .env

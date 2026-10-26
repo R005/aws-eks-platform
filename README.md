@@ -65,7 +65,7 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/README.md).
 
 ## Repo layout (planned)
 
-> Partly built. `apps/api/`, `docker-compose.yml`, `docs/adr/` and the repo tooling exist today; the rest is planned.
+> Partly built. `apps/api/`, `infra/bootstrap/`, `docker-compose.yml`, `docs/adr/` and the repo tooling exist today; the rest is planned.
 
 ```text
 .
@@ -76,13 +76,12 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/README.md).
 │   ├── web/                  # Helm chart (+ values-dev.yaml)
 │   ├── api/
 │   └── postgres/             # StatefulSet, headless Service, PVC template
-├── terraform/
+├── infra/                    # Terraform: one root module (and one state file) per stack
 │   ├── modules/              # reusable modules
-│   └── stacks/               # one root module (and one state file) per layer
-│       ├── bootstrap/        # S3 state bucket
-│       ├── network/          # VPC, subnets, NAT Gateway
-│       ├── eks/              # EKS cluster, managed node group, OIDC provider
-│       └── addons/           # Helm releases for cluster add-ons + IRSA roles
+│   ├── bootstrap/            # S3 state bucket + KMS key, README.md
+│   ├── network/              # VPC, subnets, NAT Gateway
+│   ├── eks/                  # EKS cluster, managed node group, OIDC provider
+│   └── addons/               # Helm releases for cluster add-ons + IRSA roles
 ├── docs/adr/                 # Architecture Decision Records
 ├── .gitlab-ci.yml            # CI/CD pipeline
 ├── docker-compose.yml        # local stack: postgres, migrate, api
@@ -235,9 +234,9 @@ Approximate on-demand prices for **us-east-1** while the full stack is running. 
 **Teardown policy**: destroy the costly stacks at the end of **every** session, in reverse order:
 
 ```bash
-terraform -chdir=terraform/stacks/addons  destroy   # removes the ALB created by the controller first
-terraform -chdir=terraform/stacks/eks     destroy
-terraform -chdir=terraform/stacks/network destroy   # NAT Gateway, Elastic IP
+terraform -chdir=infra/addons  destroy   # removes the ALB created by the controller first
+terraform -chdir=infra/eks     destroy
+terraform -chdir=infra/network destroy   # NAT Gateway, Elastic IP
 ```
 
 - Keep `bootstrap` (the state bucket) and the Route 53 hosted zone. They cost almost nothing, and DNS delegation is slow to redo.
@@ -247,7 +246,7 @@ terraform -chdir=terraform/stacks/network destroy   # NAT Gateway, Elastic IP
 
 - [x] **M0**: Repository, `.gitignore`, pre-commit hooks
 - [x] **M1**: Project documentation and ADRs
-- [ ] **M2**: `bootstrap` stack: S3 state bucket (versioned, encrypted, public access blocked)
+- [x] **M2**: `bootstrap` stack: S3 state bucket (versioned, encrypted, public access blocked), see [`infra/bootstrap/`](infra/bootstrap/README.md)
 - [ ] **M3**: `network` stack: VPC, public/private subnets across 2 AZs, single NAT Gateway
 - [ ] **M4**: `eks` stack: EKS cluster, managed node group (amd64), OIDC provider
 - [ ] **M5**: `addons` stack: EBS CSI driver, AWS Load Balancer Controller, ExternalDNS, External Secrets Operator, metrics-server (IRSA roles)
