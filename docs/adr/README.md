@@ -46,3 +46,4 @@ What becomes easier, what becomes harder, and any follow-ups.
 | [0010](0010-dns-delegated-lab-subdomain.md) | DNS: delegate `lab.<domain>` to Route 53 | Accepted |
 | [0011](0011-gateway-api-for-ingress.md) | Gateway API via AWS Load Balancer Controller | Accepted |
 | [0012](0012-api-stack-and-migrations.md) | api stack: uv, SQLAlchemy + psycopg, Alembic as a separate step, distroless runtime | Accepted |
+| [0013](0013-eks-access-entries-only.md) | Cluster access via EKS access entries only (API mode) | Proposed |

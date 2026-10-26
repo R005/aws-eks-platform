@@ -8,7 +8,7 @@ A production-style platform on **AWS EKS**, built entirely with code (Terraform,
 
 The app is deliberately small. The point of the project is the platform around it: networking, cluster, add-ons, secrets, CI/CD, DNS/TLS and observability, built the way a real team would build them.
 
-> Status: **in progress**. The `api` service runs locally with Docker Compose; the AWS platform is not built yet. See the [Roadmap](#roadmap).
+> Status: **in progress**. The `api` service runs locally with Docker Compose. The `bootstrap`, `network` and `eks` Terraform stacks exist; add-ons, Helm charts and CI are next. See the [Roadmap](#roadmap).
 
 ## Architecture
 
@@ -65,7 +65,7 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/README.md).
 
 ## Repo layout (planned)
 
-> Partly built. `apps/api/`, `infra/bootstrap/`, `docker-compose.yml`, `docs/adr/` and the repo tooling exist today; the rest is planned.
+> Partly built. `apps/api/`, `infra/bootstrap/`, `infra/network/`, `infra/eks/`, `docker-compose.yml`, `Makefile`, `docs/adr/` and the repo tooling exist today; the rest is planned.
 
 ```text
 .
@@ -79,11 +79,12 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/README.md).
 ├── infra/                    # Terraform: one root module (and one state file) per stack
 │   ├── modules/              # reusable modules
 │   ├── bootstrap/            # S3 state bucket + KMS key, README.md
-│   ├── network/              # VPC, subnets, NAT Gateway
-│   ├── eks/                  # EKS cluster, managed node group, OIDC provider
+│   ├── network/              # VPC, subnets, NAT Gateway, README.md
+│   ├── eks/                  # EKS cluster, managed node group, OIDC provider, access entries, README.md
 │   └── addons/               # Helm releases for cluster add-ons + IRSA roles
 ├── docs/adr/                 # Architecture Decision Records
 ├── .gitlab-ci.yml            # CI/CD pipeline
+├── Makefile                  # make up / make down for the network and eks stacks
 ├── docker-compose.yml        # local stack: postgres, migrate, api
 ├── .env.example              # template for the gitignored .env
 ├── .pre-commit-config.yaml
@@ -221,12 +222,14 @@ Approximate on-demand prices for **us-east-1** while the full stack is running. 
 | --- | --- |
 | EKS control plane (standard support) | $0.10/h, about $73/month |
 | NAT Gateway (x1) | $0.045/h plus $0.045/GB processed, about $33/month + data |
-| 2 x t3.medium worker nodes | about $61/month |
+| 2 x t3.large worker nodes | $0.083/h each, about $121/month |
 | Application Load Balancer | about $16/month + LCUs |
 | Public IPv4 addresses (NAT + ALB) | $0.005/h each, about $11/month |
 | EBS gp3 (node root volumes + Postgres PVC) | a few $/month |
-| Route 53 zone, Secrets Manager, ECR, S3 state | about $1–3/month |
-| **Total** | **about $200/month, roughly $6–7 per day** |
+| Route 53 zone, Secrets Manager, ECR, S3 state, KMS keys, CloudWatch Logs | about $3–5/month |
+| **Total** | **about $265/month, roughly $8–9 per day** |
+
+The `network` and `eks` stacks alone cost about **$0.32 per hour** (control plane, two nodes, NAT Gateway and its public IP).
 
 > Lab shortcuts: a single NAT Gateway ([ADR 0007](docs/adr/0007-single-nat-gateway-in-lab.md)), a small node group, and in-cluster Postgres ([ADR 0002](docs/adr/0002-postgres-statefulset-first-rds-later.md)). A production setup costs noticeably more.
 > Keep the cluster on an EKS version in standard support. Extended support raises the control plane price to $0.60/h.
@@ -235,9 +238,10 @@ Approximate on-demand prices for **us-east-1** while the full stack is running. 
 
 ```bash
 terraform -chdir=infra/addons  destroy   # removes the ALB created by the controller first
-terraform -chdir=infra/eks     destroy
-terraform -chdir=infra/network destroy   # NAT Gateway, Elastic IP
+make down                                # destroys eks, then network (NAT Gateway, Elastic IP)
 ```
+
+`make up` creates the platform in the opposite order (`network`, then `eks`). Both targets initialise each stack with its own `backend.hcl` and ask for confirmation before every apply or destroy.
 
 - Keep `bootstrap` (the state bucket) and the Route 53 hosted zone. They cost almost nothing, and DNS delegation is slow to redo.
 - Afterwards, check the console (read-only) for leftover load balancers, EBS volumes, ENIs and Elastic IPs.
@@ -247,8 +251,8 @@ terraform -chdir=infra/network destroy   # NAT Gateway, Elastic IP
 - [x] **M0**: Repository, `.gitignore`, pre-commit hooks
 - [x] **M1**: Project documentation and ADRs
 - [x] **M2**: `bootstrap` stack: S3 state bucket (versioned, encrypted, public access blocked), see [`infra/bootstrap/`](infra/bootstrap/README.md)
-- [ ] **M3**: `network` stack: VPC, public/private subnets across 2 AZs, single NAT Gateway
-- [ ] **M4**: `eks` stack: EKS cluster, managed node group (amd64), OIDC provider
+- [x] **M3**: `network` stack: VPC, public/private subnets across 2 AZs, single NAT Gateway, load balancer subnet tags, see [`infra/network/`](infra/network/README.md)
+- [x] **M4**: `eks` stack: EKS 1.37 cluster, managed node group (amd64, AL2023), OIDC provider for IRSA, core managed add-ons, access entries, see [`infra/eks/`](infra/eks/README.md)
 - [ ] **M5**: `addons` stack: EBS CSI driver, AWS Load Balancer Controller, ExternalDNS, External Secrets Operator, metrics-server (IRSA roles)
 - [ ] **M6**: `web` and `api` FastAPI apps, Dockerfiles, multi-arch images in ECR (`api` + local Compose stack done)
 - [ ] **M7**: Helm charts for `web`, `api` and the `postgres` StatefulSet
