@@ -8,7 +8,7 @@ A production-style platform on **AWS EKS**, built entirely with code (Terraform,
 
 The app is deliberately small. The point of the project is the platform around it: networking, cluster, add-ons, secrets, CI/CD, DNS/TLS and observability, built the way a real team would build them.
 
-> Status: **in progress**. The `api` service runs locally with Docker Compose. The `bootstrap`, `network` and `eks` Terraform stacks exist; add-ons, Helm charts and CI are next. See the [Roadmap](#roadmap).
+> Status: **in progress**. The `api` service runs locally with Docker Compose. The `bootstrap`, `network`, `eks` and `addons` Terraform stacks exist; Helm charts and CI are next. See the [Roadmap](#roadmap).
 
 ## Architecture
 
@@ -65,7 +65,7 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/README.md).
 
 ## Repo layout (planned)
 
-> Partly built. `apps/api/`, `infra/bootstrap/`, `infra/network/`, `infra/eks/`, `docker-compose.yml`, `Makefile`, `docs/adr/` and the repo tooling exist today; the rest is planned.
+> Partly built. `apps/api/`, `infra/bootstrap/`, `infra/network/`, `infra/eks/`, `infra/addons/`, `scripts/`, `docker-compose.yml`, `Makefile`, `docs/adr/` and the repo tooling exist today; the rest is planned.
 
 ```text
 .
@@ -81,10 +81,11 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/README.md).
 │   ├── bootstrap/            # S3 state bucket + KMS key, README.md
 │   ├── network/              # VPC, subnets, NAT Gateway, README.md
 │   ├── eks/                  # EKS cluster, managed node group, OIDC provider, access entries, README.md
-│   └── addons/               # Helm releases for cluster add-ons + IRSA roles
+│   └── addons/               # EKS add-ons, Helm releases, default StorageClass, IRSA roles, README.md
 ├── docs/adr/                 # Architecture Decision Records
 ├── .gitlab-ci.yml            # CI/CD pipeline
-├── Makefile                  # make up / make down for the network and eks stacks
+├── scripts/                  # check-cluster-clean.sh: pre-destroy check for AWS-backed Kubernetes objects
+├── Makefile                  # make up / make down for the network, eks and addons stacks
 ├── docker-compose.yml        # local stack: postgres, migrate, api
 ├── .env.example              # template for the gitignored .env
 ├── .pre-commit-config.yaml
@@ -237,11 +238,11 @@ The `network` and `eks` stacks alone cost about **$0.32 per hour** (control plan
 **Teardown policy**: destroy the costly stacks at the end of **every** session, in reverse order:
 
 ```bash
-terraform -chdir=infra/addons  destroy   # removes the ALB created by the controller first
-make down                                # destroys eks, then network (NAT Gateway, Elastic IP)
+helm uninstall <app> -n <namespace>      # first remove the apps: their load balancers and EBS volumes
+make down                                # check-clean, then destroys addons, eks, network
 ```
 
-`make up` creates the platform in the opposite order (`network`, then `eks`). Both targets initialise each stack with its own `backend.hcl` and ask for confirmation before every apply or destroy.
+`make down` starts with `make check-clean`, which fails while any Ingress, LoadBalancer Service or PersistentVolumeClaim still exists. Those objects make the controllers create load balancers and EBS volumes outside Terraform; destroying the `addons` stack first would leave them orphaned and billed. `make up` creates the platform in the opposite order (`network`, `eks`, then `addons`). Both targets initialise each stack with its own `backend.hcl` and ask for confirmation before every apply or destroy.
 
 - Keep `bootstrap` (the state bucket) and the Route 53 hosted zone. They cost almost nothing, and DNS delegation is slow to redo.
 - Afterwards, check the console (read-only) for leftover load balancers, EBS volumes, ENIs and Elastic IPs.
@@ -253,7 +254,7 @@ make down                                # destroys eks, then network (NAT Gatew
 - [x] **M2**: `bootstrap` stack: S3 state bucket (versioned, encrypted, public access blocked), see [`infra/bootstrap/`](infra/bootstrap/README.md)
 - [x] **M3**: `network` stack: VPC, public/private subnets across 2 AZs, single NAT Gateway, load balancer subnet tags, see [`infra/network/`](infra/network/README.md)
 - [x] **M4**: `eks` stack: EKS 1.37 cluster, managed node group (amd64, AL2023), OIDC provider for IRSA, core managed add-ons, access entries, see [`infra/eks/`](infra/eks/README.md)
-- [ ] **M5**: `addons` stack: EBS CSI driver, AWS Load Balancer Controller, ExternalDNS, External Secrets Operator, metrics-server (IRSA roles)
+- [ ] **M5**: `addons` stack: EBS CSI driver + default encrypted `gp3` StorageClass, AWS Load Balancer Controller, External Secrets Operator, metrics-server, with IRSA roles (done, see [`infra/addons/`](infra/addons/README.md)); ExternalDNS still to come
 - [ ] **M6**: `web` and `api` FastAPI apps, Dockerfiles, multi-arch images in ECR (`api` + local Compose stack done)
 - [ ] **M7**: Helm charts for `web`, `api` and the `postgres` StatefulSet
 - [ ] **M8**: GitLab CI: lint, test, build, scan, push, `helm upgrade --install`

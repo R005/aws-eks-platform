@@ -64,7 +64,7 @@ terraform plan -out=tfplan
 terraform apply tfplan
 ```
 
-From the repository root, `make up` applies this stack and then `eks`.
+From the repository root, `make up` applies this stack, then `eks` and `addons`.
 
 ## Inputs
 
@@ -93,8 +93,8 @@ From the repository root, `make up` applies this stack and then `eks`.
 
 About $0.05 per hour while it exists: the NAT Gateway ($0.045/h plus $0.045/GB processed) and its public IPv4 address ($0.005/h). The VPC, subnets and route tables are free.
 
-Destroy it at the end of every session, after the `eks` stack:
+Destroy it at the end of every session, after the `addons` and `eks` stacks:
 
 ```bash
-make down    # from the repository root: destroys eks, then network
+make down    # from the repository root: destroys addons, eks, then network
 ```

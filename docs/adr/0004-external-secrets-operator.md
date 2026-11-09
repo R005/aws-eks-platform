@@ -9,7 +9,7 @@ The apps need secrets, such as the database password. These must never be stored
 ## Decision
 Install **External Secrets Operator (ESO)** using Helm in the `addons` stack.
 
-- A `ClusterSecretStore` points at AWS Secrets Manager in the cluster's region and authenticates with **IRSA** ([ADR 0005](0005-irsa-for-pod-aws-access.md)), using a role that can read only `eks-platform/*` secrets.
+- A `ClusterSecretStore` points at AWS Secrets Manager in the cluster's region and authenticates with **IRSA** ([ADR 0005](0005-irsa-for-pod-aws-access.md)), using a role that can only read (`secretsmanager:GetSecretValue`, `secretsmanager:DescribeSecret`) secrets named `eks-platform/dev/*`, the prefix of its own environment.
 - Each app chart ships an `ExternalSecret` that maps Secrets Manager keys to a Kubernetes Secret, with a `refreshInterval` so rotations sync automatically.
 - Secrets are created in Secrets Manager outside Git. Terraform can create the secret *resource*, but the value is never committed.
 

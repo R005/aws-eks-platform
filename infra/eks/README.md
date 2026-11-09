@@ -57,7 +57,7 @@ terraform plan -out=tfplan                     # fails with "no matching EC2 VPC
 terraform apply tfplan
 ```
 
-From the repository root, `make up` applies `network` and then this stack. Creating the cluster takes about 15 minutes.
+From the repository root, `make up` applies `network`, this stack and then `addons`. Creating the cluster takes about 15 minutes.
 
 Connect `kubectl`:
 
@@ -102,10 +102,10 @@ About $0.27 per hour while it exists:
 | 2 x 20 GB gp3 root volumes | about $0.004/h |
 | KMS key, CloudWatch Logs | about $1/month plus log ingestion |
 
-Destroy it at the end of every session, before the `network` stack:
+Destroy it at the end of every session, after the `addons` stack and before the `network` stack:
 
 ```bash
-make down    # from the repository root: destroys eks, then network
+make down    # from the repository root: destroys addons, eks, then network
 ```
 
 The secrets KMS key is scheduled for deletion with the default 30-day waiting period rather than deleted immediately. A key pending deletion is not billed. Each recreated cluster gets a new key.
