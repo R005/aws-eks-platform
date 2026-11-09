@@ -1,0 +1,7 @@
+apiVersion: v2
+name: task-tracker
+description: Task tracker api with its PostgreSQL database, migrations and secrets
+type: application
+version: 0.1.0
+# The api image tag is the Git SHA, set at deploy time (image.tag), so appVersion is informational.
+appVersion: "0.1.0"

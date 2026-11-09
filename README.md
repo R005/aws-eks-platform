@@ -8,7 +8,7 @@ A production-style platform on **AWS EKS**, built entirely with code (Terraform,
 
 The app is deliberately small. The point of the project is the platform around it: networking, cluster, add-ons, secrets, CI/CD, DNS/TLS and observability, built the way a real team would build them.
 
-> Status: **in progress**. The `api` service runs locally with Docker Compose. The `bootstrap`, `network`, `eks` and `addons` Terraform stacks exist; Helm charts and CI are next. See the [Roadmap](#roadmap).
+> Status: **in progress**. The `api` service runs locally with Docker Compose and deploys to EKS with the `task-tracker` Helm chart. The `bootstrap`, `foundation`, `network`, `eks` and `addons` Terraform stacks exist; the `web` service and CI are next. See the [Roadmap](#roadmap).
 
 ## Architecture
 
@@ -30,7 +30,7 @@ The app is deliberately small. The point of the project is the platform around i
 |  +------------------------------------------------------------------+  |
 |  | EKS managed node group (amd64)                                   |  |
 |  |                                                                  |  |
-|  |  ns task-tracker:                                                |  |
+|  |  ns tasks:                                                       |  |
 |  |    [web: FastAPI] --> [api: FastAPI] --> [postgres: StatefulSet] |  |
 |  |                                                |                 |  |
 |  |                                          PVC (EBS gp3)           |  |
@@ -56,7 +56,7 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/README.md).
 | Area | Tools |
 | --- | --- |
 | Cloud | AWS: VPC, EKS, ECR, Route 53, ACM, Secrets Manager, S3, IAM |
-| Infrastructure as Code | Terraform (stacks: `bootstrap`, `network`, `eks`, `addons`) |
+| Infrastructure as Code | Terraform (stacks: `bootstrap`, `foundation`, `network`, `eks`, `addons`) |
 | Packaging and deploy | Docker (buildx, multi-arch), Helm, GitLab CI/CD (GitLab.com shared runners) |
 | Application | Python, FastAPI, PostgreSQL |
 | Cluster add-ons | AWS Load Balancer Controller (Gateway API), ExternalDNS, External Secrets Operator, EBS CSI driver, metrics-server |
@@ -65,7 +65,7 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/README.md).
 
 ## Repo layout (planned)
 
-> Partly built. `apps/api/`, `infra/bootstrap/`, `infra/network/`, `infra/eks/`, `infra/addons/`, `scripts/`, `docker-compose.yml`, `Makefile`, `docs/adr/` and the repo tooling exist today; the rest is planned.
+> Partly built. `apps/api/`, `helm/task-tracker/`, `infra/bootstrap/`, `infra/foundation/`, `infra/network/`, `infra/eks/`, `infra/addons/`, `scripts/`, `docker-compose.yml`, `Makefile`, `docs/adr/` and the repo tooling exist today; the rest is planned.
 
 ```text
 .
@@ -73,19 +73,18 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/README.md).
 │   ├── web/                  # FastAPI web service + Dockerfile (planned)
 │   └── api/                  # FastAPI api service + Dockerfile, OPERATIONS.md
 ├── helm/
-│   ├── web/                  # Helm chart (+ values-dev.yaml)
-│   ├── api/
-│   └── postgres/             # StatefulSet, headless Service, PVC template
+│   └── task-tracker/         # api, Postgres StatefulSet, migrate hook Job, ExternalSecret, README.md
 ├── infra/                    # Terraform: one root module (and one state file) per stack
 │   ├── modules/              # reusable modules
 │   ├── bootstrap/            # S3 state bucket + KMS key, README.md
+│   ├── foundation/           # ECR repository, database secret (kept between sessions), README.md
 │   ├── network/              # VPC, subnets, NAT Gateway, README.md
 │   ├── eks/                  # EKS cluster, managed node group, OIDC provider, access entries, README.md
 │   └── addons/               # EKS add-ons, Helm releases, default StorageClass, IRSA roles, README.md
 ├── docs/adr/                 # Architecture Decision Records
 ├── .gitlab-ci.yml            # CI/CD pipeline
 ├── scripts/                  # check-cluster-clean.sh: pre-destroy check for AWS-backed Kubernetes objects
-├── Makefile                  # make up / make down for the network, eks and addons stacks
+├── Makefile                  # make up / down (platform), make image / deploy / undeploy (app)
 ├── docker-compose.yml        # local stack: postgres, migrate, api
 ├── .env.example              # template for the gitignored .env
 ├── .pre-commit-config.yaml
@@ -215,6 +214,39 @@ pre-commit run --all-files    # run every hook against the whole repo
 
 Git workflow: trunk-based, with a protected `main`, short-lived branches, Conventional Commits, and squash plus fast-forward merges. See [ADR 0009](docs/adr/0009-trunk-based-git-workflow.md).
 
+## Deploy to EKS
+
+The `task-tracker` release runs the `api`, its PostgreSQL StatefulSet and the migration Job in the `tasks` namespace. The image comes from ECR, and the database password comes from Secrets Manager through External Secrets. Chart details: [`helm/task-tracker/README.md`](helm/task-tracker/README.md).
+
+Order, from an empty account:
+
+| Step | Command | When |
+| --- | --- | --- |
+| 1 | `bootstrap` stack ([README](infra/bootstrap/README.md)) | once per account |
+| 2 | `foundation` stack: `terraform -chdir=infra/foundation init -backend-config=backend.hcl && terraform -chdir=infra/foundation apply` | once; kept between sessions |
+| 3 | `make image` | after each change to `apps/api` (commit it first) |
+| 4 | `make up` | start of each session |
+| 5 | `aws eks update-kubeconfig --region <region> --name eks-platform-dev` | after each `make up` |
+| 6 | `make deploy` | after `make up`, and after each new image |
+| 7 | `make undeploy` | end of each session, before `make down` |
+| 8 | `make down` | end of each session |
+
+What the targets do:
+
+- **`make image`** refuses to run while `apps/api` has uncommitted changes. It logs Docker in to ECR with a short-lived token (`aws ecr get-login-password`), then `docker buildx build --platform linux/amd64 … --push`. The tag is the short Git SHA of `HEAD`. The nodes are amd64 and this Mac is arm64, so the build runs under emulation. Tags are immutable: pushing the same SHA twice fails, so commit first.
+- **`make deploy`** checks that the tag exists in ECR, then runs `helm upgrade --install task-tracker helm/task-tracker` with the registry, tag and region set on the command line, `--wait` and a 10 minute timeout. Deploy an earlier image with `make deploy TAG=<sha>`.
+- **`make undeploy`** asks for confirmation, runs `helm uninstall`, then deletes the Postgres PVC, which deletes its EBS volume and all data.
+
+`deploy` and `undeploy` pass `--kube-context` for the `eks-platform-dev` context (the ARN name that `update-kubeconfig` writes), so they never act on another cluster that happens to be current.
+
+Check the release:
+
+```bash
+kubectl -n tasks get externalsecret,pods,svc,pvc        # ExternalSecret SecretSynced, 2 api pods and postgres-0 Ready
+kubectl -n tasks port-forward svc/task-tracker-api 8000:8000
+curl -s localhost:8000/readyz
+```
+
 ## Cost estimate and teardown policy
 
 Approximate on-demand prices for **us-east-1** while the full stack is running. Check the current AWS pricing pages before relying on them.
@@ -238,13 +270,13 @@ The `network` and `eks` stacks alone cost about **$0.32 per hour** (control plan
 **Teardown policy**: destroy the costly stacks at the end of **every** session, in reverse order:
 
 ```bash
-helm uninstall <app> -n <namespace>      # first remove the apps: their load balancers and EBS volumes
+make undeploy                            # first remove the apps: their load balancers and EBS volumes
 make down                                # check-clean, then destroys addons, eks, network
 ```
 
-`make down` starts with `make check-clean`, which fails while any Ingress, LoadBalancer Service or PersistentVolumeClaim still exists. Those objects make the controllers create load balancers and EBS volumes outside Terraform; destroying the `addons` stack first would leave them orphaned and billed. `make up` creates the platform in the opposite order (`network`, `eks`, then `addons`). Both targets initialise each stack with its own `backend.hcl` and ask for confirmation before every apply or destroy.
+`make down` starts with `make check-clean`, which fails while the `task-tracker` Helm release or any Ingress, LoadBalancer Service or PersistentVolumeClaim still exists. Those objects make the controllers create load balancers and EBS volumes outside Terraform; destroying the `addons` stack first would leave them orphaned and billed. `make up` creates the platform in the opposite order (`network`, `eks`, then `addons`). Both targets initialise each stack with its own `backend.hcl` and ask for confirmation before every apply or destroy.
 
-- Keep `bootstrap` (the state bucket) and the Route 53 hosted zone. They cost almost nothing, and DNS delegation is slow to redo.
+- Keep `bootstrap` (the state bucket), `foundation` (ECR images and the database secret) and the Route 53 hosted zone. They cost almost nothing, and DNS delegation is slow to redo.
 - Afterwards, check the console (read-only) for leftover load balancers, EBS volumes, ENIs and Elastic IPs.
 
 ## Roadmap
@@ -255,8 +287,8 @@ make down                                # check-clean, then destroys addons, ek
 - [x] **M3**: `network` stack: VPC, public/private subnets across 2 AZs, single NAT Gateway, load balancer subnet tags, see [`infra/network/`](infra/network/README.md)
 - [x] **M4**: `eks` stack: EKS 1.37 cluster, managed node group (amd64, AL2023), OIDC provider for IRSA, core managed add-ons, access entries, see [`infra/eks/`](infra/eks/README.md)
 - [ ] **M5**: `addons` stack: EBS CSI driver + default encrypted `gp3` StorageClass, AWS Load Balancer Controller, External Secrets Operator, metrics-server, with IRSA roles (done, see [`infra/addons/`](infra/addons/README.md)); ExternalDNS still to come
-- [ ] **M6**: `web` and `api` FastAPI apps, Dockerfiles, multi-arch images in ECR (`api` + local Compose stack done)
-- [ ] **M7**: Helm charts for `web`, `api` and the `postgres` StatefulSet
+- [ ] **M6**: `web` and `api` FastAPI apps, Dockerfiles, images in ECR (`api`, local Compose stack, ECR repository and `make image` done, see [`infra/foundation/`](infra/foundation/README.md))
+- [ ] **M7**: Helm charts for `web`, `api` and the `postgres` StatefulSet (`api` + Postgres done in [`helm/task-tracker/`](helm/task-tracker/README.md))
 - [ ] **M8**: GitLab CI: lint, test, build, scan, push, `helm upgrade --install`
 - [ ] **M9**: Gateway API + Route 53 (`<app>.lab.<domain>`) + ACM TLS
 - [ ] **M10**: Observability: kube-prometheus-stack, dashboards, alerts

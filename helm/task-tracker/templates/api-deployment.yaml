@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    {{- include "task-tracker.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0   # never drop below the desired replicas during a rollout
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "task-tracker.selectorLabels" (dict "ctx" . "component" "api") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "task-tracker.labels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+    spec:
+      automountServiceAccountToken: false   # the api never calls the Kubernetes API
+      # Default 30 s: preStop sleep + the api's 20 s graceful shutdown fit inside it.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        {{- include "task-tracker.apiPodSecurityContext" . | nindent 8 }}
+      containers:
+        - name: api
+          image: {{ include "task-tracker.apiImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.port }}
+          env:
+            {{- include "task-tracker.dbEnv" . | nindent 12 }}
+            - name: ENABLE_DEBUG_ENDPOINTS
+              value: "false"
+          # Startup ~0.4 s; allow up to 30 s before liveness takes over.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 15
+          # No dependencies: a database outage never restarts the api.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # Checks the database; takes the replica out of the Service without restarting it.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              # Native sleep action: the distroless image has no shell or sleep binary.
+              sleep:
+                seconds: {{ .Values.api.preStopSleepSeconds }}
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          securityContext:
+            {{- include "task-tracker.apiContainerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi   # disk-backed, so it does not count against the memory limit

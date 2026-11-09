@@ -1,0 +1,48 @@
+# Defaults for the task-tracker chart. make deploy sets image.registry, image.tag and
+# externalSecrets.region from the environment; nothing account-specific is committed.
+
+image:
+  registry: ""                  # <account-id>.dkr.ecr.<region>.amazonaws.com (required)
+  repository: eks-platform/api
+  tag: ""                       # short Git SHA pushed by make image (required)
+  pullPolicy: IfNotPresent      # tags are immutable, so a cached image is always correct
+
+api:
+  replicas: 2
+  port: 8000
+  logLevel: INFO
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 256Mi             # no CPU limit: it would throttle a replica below one core
+  # Seconds the pod keeps serving after SIGTERM, while it is removed from Service endpoints.
+  preStopSleepSeconds: 5
+
+database:
+  name: tasks
+  user: tasks
+  port: 5432
+
+postgres:
+  # Same pinned image as docker-compose.yml.
+  image: postgres:18.6-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+  storage:
+    size: 10Gi
+    storageClassName: gp3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+migrate:
+  backoffLimit: 2
+  activeDeadlineSeconds: 300
+
+externalSecrets:
+  region: ""                    # AWS region of the secret (required)
+  secretName: eks-platform/dev/db
+  refreshInterval: 1h

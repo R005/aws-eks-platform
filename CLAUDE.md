@@ -34,18 +34,24 @@ This repo is mirrored to a **public** GitHub repo. Never write sensitive data in
 - Never include real AWS account IDs, ARNs containing account IDs, emails, real domains, internal URLs, IP allowlists, Terraform state or plan output, or kubeconfig content.
 - When showing command output that contains such values, redact it before it goes into docs.
 
-## Repo layout (planned)
+## Repo layout
 
 ```text
-apps/{web,api}/                       FastAPI services + Dockerfiles
-helm/{web,api,postgres}/              Helm charts (+ values-dev.yaml)
-infra/modules/                        reusable Terraform modules
-infra/{bootstrap,network,eks,addons}/ one Terraform root module + state per stack
-docs/adr/                             Architecture Decision Records
-.gitlab-ci.yml                        CI/CD pipeline
+apps/api/                     FastAPI api service, Dockerfile, OPERATIONS.md
+apps/web/                     FastAPI web service (planned)
+helm/task-tracker/            api, Postgres StatefulSet, migrate hook Job, SecretStore + ExternalSecret
+infra/bootstrap/              S3 state bucket + KMS key (kept)
+infra/foundation/             ECR repository, database secret (kept)
+infra/{network,eks,addons}/   platform stacks, created by make up and destroyed by make down
+infra/modules/                reusable Terraform modules (planned)
+scripts/                      check-cluster-clean.sh (safety check for make down)
+docs/adr/                     Architecture Decision Records
+Makefile                      make up/down (platform), make image/deploy/undeploy (app)
+docker-compose.yml            local stack: postgres, migrate, api
+.gitlab-ci.yml                CI/CD pipeline (planned)
 ```
 
-Terraform stacks are applied in the order `bootstrap → network → eks → addons` and destroyed in reverse (keep `bootstrap` and the Route 53 zone).
+Each Terraform stack is one root module with its own state. `bootstrap` and `foundation` are applied once and kept. `make up` applies `network → eks → addons`; `make down` destroys them in reverse after `make undeploy` (keep `bootstrap`, `foundation` and the Route 53 zone).
 
 ## Working mode for this project (fast mode)
 

@@ -1,0 +1,5 @@
+task-tracker {{ .Values.image.tag }} deployed to namespace {{ .Release.Namespace }}.
+
+  kubectl -n {{ .Release.Namespace }} get externalsecret,pods,svc,pvc
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ .Release.Name }}-api {{ .Values.api.port }}:{{ .Values.api.port }}
+  curl -s localhost:{{ .Values.api.port }}/readyz

@@ -1,0 +1,48 @@
+# Alembic migrations, once per release, from the api image (OPERATIONS.md).
+# post-install: on the first install the database and its Secret are normal release resources,
+# which Helm creates before post-install hooks (a pre-install hook would run before they exist).
+# pre-upgrade: on every later release the schema is migrated before the new api pods roll out.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-migrate
+  labels:
+    {{- include "task-tracker.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    # Keep a failed Job for its logs; it is replaced on the next run and removed on success.
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migrate.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrate.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "task-tracker.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "task-tracker.apiPodSecurityContext" . | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "task-tracker.apiImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/app/.venv/bin/alembic"]
+          args: ["upgrade", "head"]
+          env:
+            {{- include "task-tracker.dbEnv" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          securityContext:
+            {{- include "task-tracker.apiContainerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

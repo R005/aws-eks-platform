@@ -14,6 +14,6 @@ output "lbc_role_arn" {
 }
 
 output "external_secrets_role_arn" {
-  description = "IAM role assumed by External Secrets Operator through IRSA. Referenced by the ClusterSecretStore."
+  description = "IAM role assumed by External Secrets Operator through IRSA. Used by SecretStores that have no auth block."
   value       = module.external_secrets_irsa.arn
 }

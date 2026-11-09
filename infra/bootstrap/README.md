@@ -1,6 +1,6 @@
 # bootstrap
 
-Terraform stack that creates the remote state storage used by every other stack in this repository (`network`, `eks`, `addons`). It is applied once per AWS account and kept for the lifetime of the platform.
+Terraform stack that creates the remote state storage used by every other stack in this repository (`foundation`, `network`, `eks`, `addons`). It is applied once per AWS account and kept for the lifetime of the platform.
 
 See [ADR 0003](../../docs/adr/0003-s3-native-state-locking.md) for the state and locking design.
 
