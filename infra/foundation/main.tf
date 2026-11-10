@@ -62,3 +62,66 @@ resource "aws_secretsmanager_secret_version" "db" {
   secret_string_wo         = jsonencode({ password = ephemeral.random_password.db.result })
   secret_string_wo_version = var.db_password_version
 }
+
+# --- DNS ----------------------------------------------------------------------
+# Public zone for lab.<domain> (ADR 0010). The parent domain delegates to it with NS records
+# set once at its DNS provider. Kept between sessions: a recreated zone gets new name servers,
+# which means redoing the delegation and waiting for propagation.
+
+resource "aws_route53_zone" "lab" {
+  name    = "lab.${var.domain_name}"
+  comment = "Delegated subdomain for ${var.project} app hostnames"
+
+  # force_destroy is left false: a destroy fails while the zone still holds records
+  # (for example ones written by ExternalDNS), so they are never deleted by accident.
+
+  # Terraform refuses any plan that destroys the zone, including a full terraform destroy of this
+  # stack. Removing the zone on purpose means deleting this block first, as a reviewed change.
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# --- TLS certificate ----------------------------------------------------------
+# One ACM certificate for lab.<domain> and *.lab.<domain>, used by the ALB (ADR 0014). The AWS Load
+# Balancer Controller finds it by the Ingress host, so its ARN is never passed around. Same region
+# as the cluster: an ALB can only use certificates from its own region.
+
+resource "aws_acm_certificate" "lab" {
+  domain_name               = aws_route53_zone.lab.name
+  subject_alternative_names = ["*.${aws_route53_zone.lab.name}"]
+  validation_method         = "DNS"
+
+  # Any replacement (for example a new SAN) issues the new certificate before the old one is
+  # deleted, so a listener that still uses the old one never blocks the change.
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# ACM asks for one CNAME per name. The apex and the wildcard get the same record, so both
+# instances write the same CNAME; allow_overwrite lets the second one succeed instead of
+# failing with "already exists". ACM keeps using the records for automatic renewal.
+resource "aws_route53_record" "lab_cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.lab.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      type   = dvo.resource_record_type
+      record = dvo.resource_record_value
+    }
+  }
+
+  zone_id         = aws_route53_zone.lab.zone_id
+  name            = each.value.name
+  type            = each.value.type
+  records         = [each.value.record]
+  ttl             = 300
+  allow_overwrite = true
+}
+
+# Not a real AWS object: it waits during apply until ACM reports the certificate as ISSUED
+# (usually a few minutes; it fails after 75 minutes if the delegation does not resolve).
+resource "aws_acm_certificate_validation" "lab" {
+  certificate_arn         = aws_acm_certificate.lab.arn
+  validation_record_fqdns = [for record in aws_route53_record.lab_cert_validation : record.fqdn]
+}

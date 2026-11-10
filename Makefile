@@ -20,6 +20,11 @@ NAMESPACE    := tasks
 # Context name written by `aws eks update-kubeconfig` (the cluster ARN). Passed explicitly so
 # deploy and undeploy never act on whatever context happens to be current.
 KUBE_CONTEXT ?= arn:aws:eks:$(REGION):$(AWS_ACCOUNT_ID):cluster/$(CLUSTER)
+# Public host of the api. The zone name (lab.<domain>) comes from the foundation stack's output,
+# read at most once and only by deploy, so the domain is never written into a tracked file.
+APP_NAME     := tasks
+LAB_ZONE      = $(eval LAB_ZONE := $(shell $(TF) -chdir=infra/foundation output -raw lab_zone_name 2>/dev/null))$(LAB_ZONE)
+APP_HOST     ?= $(if $(LAB_ZONE),$(APP_NAME).$(LAB_ZONE))
 
 .DEFAULT_GOAL := help
 .PHONY: help up down check-clean check-region image deploy undeploy
@@ -55,11 +60,13 @@ image: check-region ## Build the api image for linux/amd64, tag it with the shor
 	docker buildx build --platform $(PLATFORM) --tag $(REGISTRY)/$(IMAGE_REPO):$(TAG) --push apps/api
 
 deploy: check-region ## Install or upgrade the task-tracker release with image tag TAG (default: HEAD)
+	@test -n "$(APP_HOST)" || { echo "APP_HOST is empty: run terraform -chdir=infra/foundation init, or pass APP_HOST=tasks.lab.<domain>" >&2; exit 1; }
 	@aws ecr describe-images --region $(REGION) --repository-name $(IMAGE_REPO) --image-ids imageTag=$(TAG) >/dev/null 2>&1 \
 	  || { echo "Image $(IMAGE_REPO):$(TAG) is not in ECR: run make image, or pass TAG=<pushed-sha>" >&2; exit 1; }
 	helm upgrade --install $(RELEASE) helm/task-tracker \
 	  --kube-context $(KUBE_CONTEXT) --namespace $(NAMESPACE) --create-namespace \
 	  --set image.registry=$(REGISTRY) --set image.tag=$(TAG) --set externalSecrets.region=$(REGION) \
+	  --set ingress.host=$(APP_HOST) \
 	  --wait --timeout 10m
 
 undeploy: check-region ## Uninstall the task-tracker release, then delete its Postgres PVC (deletes the data)

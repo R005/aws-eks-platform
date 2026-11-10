@@ -15,7 +15,7 @@ Project-specific facts and rules for Claude Code.
 | App hostnames | `<app>.lab.<domain>` |
 | Required tags | `Project`, `Env`, `Owner`, `ManagedBy` (through provider `default_tags`) |
 
-App: Python 3-tier task tracker: FastAPI `web` → FastAPI `api` → PostgreSQL (StatefulSet first, RDS later).
+App: Python task tracker: FastAPI `api` → PostgreSQL (StatefulSet first, RDS later), exposed through an ALB Ingress.
 Decisions live in `docs/adr/`. Read the relevant ADR before changing an area, and add a new ADR for any significant new decision.
 
 ## Git workflow (ADR 0009)
@@ -38,10 +38,9 @@ This repo is mirrored to a **public** GitHub repo. Never write sensitive data in
 
 ```text
 apps/api/                     FastAPI api service, Dockerfile, OPERATIONS.md
-apps/web/                     FastAPI web service (planned)
-helm/task-tracker/            api, Postgres StatefulSet, migrate hook Job, SecretStore + ExternalSecret
+helm/task-tracker/            api, Ingress, Postgres StatefulSet, migrate hook Job, SecretStore + ExternalSecret
 infra/bootstrap/              S3 state bucket + KMS key (kept)
-infra/foundation/             ECR repository, database secret (kept)
+infra/foundation/             ECR repository, database secret, lab zone + ACM certificate (kept)
 infra/{network,eks,addons}/   platform stacks, created by make up and destroyed by make down
 infra/modules/                reusable Terraform modules (planned)
 scripts/                      check-cluster-clean.sh (safety check for make down)

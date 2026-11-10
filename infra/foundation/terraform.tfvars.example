@@ -1,2 +1,3 @@
-region = "us-east-1"
-owner  = "<owner>"
+region      = "us-east-1"
+owner       = "<owner>"
+domain_name = "<domain>" # parent domain; the hosted zone is lab.<domain>

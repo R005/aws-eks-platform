@@ -43,3 +43,19 @@ variable "metrics_server_addon_version" {
   type        = string
   default     = "v0.9.0-eksbuild.14"
 }
+
+variable "external_dns_chart_version" {
+  description = "external-dns chart version (kubernetes-sigs chart; the app version differs, for example chart 1.23.0 ships ExternalDNS 0.23.0)."
+  type        = string
+  default     = "1.23.0"
+}
+
+variable "domain_name" {
+  description = "Parent domain (for example example.com). ExternalDNS manages records in lab.<domain_name> only. Set it in terraform.tfvars; never commit it."
+  type        = string
+
+  validation {
+    condition     = can(regex("^([a-z0-9]([a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,}$", var.domain_name)) && !startswith(var.domain_name, "lab.")
+    error_message = "domain_name must be a lowercase domain without a trailing dot or the lab. prefix, for example example.com."
+  }
+}

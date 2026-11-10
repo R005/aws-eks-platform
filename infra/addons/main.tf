@@ -87,7 +87,7 @@ resource "kubernetes_storage_class_v1" "gp3" {
 }
 
 # --- AWS Load Balancer Controller ---------------------------------------------
-# Creates ALBs and NLBs for Ingress, Gateway API and LoadBalancer Service objects.
+# Creates ALBs for Ingress objects (ADR 0014) and NLBs for LoadBalancer Services.
 
 locals {
   lbc_service_account = "aws-load-balancer-controller"
@@ -214,5 +214,93 @@ resource "aws_eks_addon" "metrics_server" {
   resolve_conflicts_on_update = "OVERWRITE"
 
   # The add-on creates a Service; the Load Balancer Controller webhook must be ready first.
+  depends_on = [helm_release.aws_load_balancer_controller]
+}
+
+# --- ExternalDNS --------------------------------------------------------------
+# Creates Route 53 records for Ingress hosts, only in the delegated lab.<domain> zone (ADR 0010).
+
+# Found by name, so this stack does not read the foundation stack's state.
+data "aws_route53_zone" "lab" {
+  name         = "lab.${var.domain_name}"
+  private_zone = false
+}
+
+locals {
+  external_dns_namespace       = "external-dns"
+  external_dns_service_account = "external-dns"
+}
+
+module "external_dns_irsa" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts"
+  version = "~> 6.8"
+
+  name            = "${local.name}-external-dns"
+  use_name_prefix = false
+  description     = "ExternalDNS (IRSA)"
+
+  # Custom statements instead of attach_external_dns_policy, which also allows the record and tag
+  # reads on every hosted zone ("*").
+  policy_name = "${local.name}-external-dns"
+  permissions = {
+    # Writes and record reads in the lab zone only.
+    ManageLabZoneRecords = {
+      actions = [
+        "route53:ChangeResourceRecordSets",
+        "route53:ListResourceRecordSets",
+        "route53:ListTagsForResources",
+      ]
+      resources = [data.aws_route53_zone.lab.arn]
+    }
+    # Finding the zone by name needs the account-wide list; ListHostedZones has no resource-level scope.
+    ListZones = {
+      actions   = ["route53:ListHostedZones"]
+      resources = ["*"]
+    }
+  }
+
+  oidc_providers = {
+    this = {
+      provider_arn               = data.aws_iam_openid_connect_provider.this.arn
+      namespace_service_accounts = ["${local.external_dns_namespace}:${local.external_dns_service_account}"]
+    }
+  }
+}
+
+resource "kubernetes_namespace_v1" "external_dns" {
+  metadata {
+    name = local.external_dns_namespace
+  }
+}
+
+resource "helm_release" "external_dns" {
+  name       = "external-dns"
+  repository = "https://kubernetes-sigs.github.io/external-dns/"
+  chart      = "external-dns"
+  version    = var.external_dns_chart_version
+  namespace  = kubernetes_namespace_v1.external_dns.metadata[0].name
+
+  values = [yamlencode({
+    provider = { name = "aws" }
+
+    # Route 53 is global, but the AWS SDK still needs a region; IMDS is not reachable from pods.
+    env = [{ name = "AWS_DEFAULT_REGION", value = var.region }]
+
+    domainFilters = [data.aws_route53_zone.lab.name]
+
+    # sync: also deletes records it created once their Ingress is gone. Ownership comes from the
+    # TXT registry: records without a TXT entry for this owner ID are never touched.
+    policy     = "sync"
+    registry   = "txt"
+    txtOwnerId = local.name
+
+    serviceAccount = {
+      create      = true
+      name        = local.external_dns_service_account
+      annotations = { (local.irsa_role_annotation) = module.external_dns_irsa.arn }
+    }
+  })]
+
+  # The chart creates a Service; the Load Balancer Controller webhook must be ready first.
   depends_on = [helm_release.aws_load_balancer_controller]
 }

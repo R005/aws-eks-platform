@@ -17,3 +17,8 @@ output "external_secrets_role_arn" {
   description = "IAM role assumed by External Secrets Operator through IRSA. Used by SecretStores that have no auth block."
   value       = module.external_secrets_irsa.arn
 }
+
+output "external_dns_role_arn" {
+  description = "IAM role assumed by ExternalDNS through IRSA."
+  value       = module.external_dns_irsa.arn
+}

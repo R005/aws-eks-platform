@@ -1,6 +1,6 @@
 # 0011. Gateway API via AWS Load Balancer Controller
 
-- **Status:** Accepted
+- **Status:** Superseded by [0014](0014-ingress-via-aws-load-balancer-controller.md)
 - **Date:** 2026-10-25
 
 ## Context

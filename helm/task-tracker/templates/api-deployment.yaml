@@ -22,8 +22,9 @@ spec:
         app.kubernetes.io/component: api
     spec:
       automountServiceAccountToken: false   # the api never calls the Kubernetes API
-      # Default 30 s: preStop sleep + the api's 20 s graceful shutdown fit inside it.
-      terminationGracePeriodSeconds: 30
+      # The grace period covers the preStop sleep too: sleep + the api's 20 s graceful shutdown
+      # + 5 s of headroom before SIGKILL (40 s with the default 15 s sleep).
+      terminationGracePeriodSeconds: {{ add .Values.api.preStopSleepSeconds 25 }}
       securityContext:
         {{- include "task-tracker.apiPodSecurityContext" . | nindent 8 }}
       containers:

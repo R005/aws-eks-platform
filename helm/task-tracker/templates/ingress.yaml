@@ -1,0 +1,33 @@
+{{- if .Values.ingress.enabled }}
+{{- /* Internet-facing ALB from the AWS Load Balancer Controller (ADR 0014). No certificate-arn:
+the controller discovers the ACM certificate whose names match the rule host (*.lab.<domain>). */}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    {{- include "task-tracker.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    # Register pod IPs directly (VPC CNI), so traffic skips the NodePort hop and kube-proxy.
+    alb.ingress.kubernetes.io/target-type: ip
+    # The HTTPS listener is what triggers certificate discovery; HTTP only redirects to it.
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    # Readiness, not liveness: a replica without a database leaves the target group.
+    alb.ingress.kubernetes.io/healthcheck-path: {{ .Values.ingress.healthCheckPath | quote }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ required "ingress.host is required (tasks.lab.<domain>, set by make deploy)" .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-api
+                port:
+                  name: http
+{{- end }}

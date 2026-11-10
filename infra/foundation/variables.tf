@@ -31,3 +31,13 @@ variable "db_password_version" {
   type        = number
   default     = 1
 }
+
+variable "domain_name" {
+  description = "Parent domain (for example example.com). The hosted zone is lab.<domain_name>. Set it in terraform.tfvars; never commit it."
+  type        = string
+
+  validation {
+    condition     = can(regex("^([a-z0-9]([a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,}$", var.domain_name)) && !startswith(var.domain_name, "lab.")
+    error_message = "domain_name must be a lowercase domain without a trailing dot or the lab. prefix, for example example.com."
+  }
+}

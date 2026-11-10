@@ -44,6 +44,7 @@ What becomes easier, what becomes harder, and any follow-ups.
 | [0008](0008-gitlab-shared-runners.md) | GitLab.com shared runners | Accepted |
 | [0009](0009-trunk-based-git-workflow.md) | Trunk-based Git workflow | Accepted |
 | [0010](0010-dns-delegated-lab-subdomain.md) | DNS: delegate `lab.<domain>` to Route 53 | Accepted |
-| [0011](0011-gateway-api-for-ingress.md) | Gateway API via AWS Load Balancer Controller | Accepted |
+| [0011](0011-gateway-api-for-ingress.md) | Gateway API via AWS Load Balancer Controller | Superseded by 0014 |
 | [0012](0012-api-stack-and-migrations.md) | api stack: uv, SQLAlchemy + psycopg, Alembic as a separate step, distroless runtime | Accepted |
 | [0013](0013-eks-access-entries-only.md) | Cluster access via EKS access entries only (API mode) | Proposed |
+| [0014](0014-ingress-via-aws-load-balancer-controller.md) | Ingress via AWS Load Balancer Controller | Accepted |

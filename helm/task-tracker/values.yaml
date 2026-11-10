@@ -1,5 +1,5 @@
-# Defaults for the task-tracker chart. make deploy sets image.registry, image.tag and
-# externalSecrets.region from the environment; nothing account-specific is committed.
+# Defaults for the task-tracker chart. make deploy sets image.registry, image.tag,
+# externalSecrets.region and ingress.host from the environment; nothing account-specific is committed.
 
 image:
   registry: ""                  # <account-id>.dkr.ecr.<region>.amazonaws.com (required)
@@ -17,8 +17,10 @@ api:
       memory: 128Mi
     limits:
       memory: 256Mi             # no CPU limit: it would throttle a replica below one core
-  # Seconds the pod keeps serving after SIGTERM, while it is removed from Service endpoints.
-  preStopSleepSeconds: 5
+  # Seconds the pod keeps serving before SIGTERM, while it is removed from Service endpoints and
+  # deregistered from the ALB target group (which takes longer than the endpoint update).
+  # The grace period is derived from it: preStopSleepSeconds + 25.
+  preStopSleepSeconds: 15
 
 database:
   name: tasks
@@ -37,6 +39,12 @@ postgres:
       memory: 256Mi
     limits:
       memory: 512Mi
+
+ingress:
+  enabled: true
+  className: alb                # IngressClass created by the AWS Load Balancer Controller chart
+  host: ""                      # tasks.lab.<domain>, set by make deploy (required)
+  healthCheckPath: /readyz      # ALB target health check
 
 migrate:
   backoffLimit: 2
