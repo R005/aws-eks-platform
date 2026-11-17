@@ -18,12 +18,12 @@ Project-specific facts and rules for Claude Code.
 App: Python task tracker: FastAPI `api` → PostgreSQL (StatefulSet first, RDS later), exposed through an ALB Ingress.
 Decisions live in `docs/adr/`. Read the relevant ADR before changing an area, and add a new ADR for any significant new decision.
 
-## Git workflow (ADR 0009)
+## Git workflow (ADR 0009, ADR 0015)
 
 - `main` is protected. Changes land only through a merge request with a green pipeline.
 - Use short-lived branches off `main`, named `<type>/<short-description>`.
 - Use Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `ci:`, `refactor:`, `test:` …). The commit-msg hook enforces this.
-- Merge method: squash, fast-forward only. Rebase on `main` before merging. No merge commits.
+- Merge method: fast-forward, no squash, so commits keep their author. Rebase on `main` before merging. No merge commits.
 - Claude never commits, pushes or opens an MR unless explicitly asked.
 
 ## Public repository rule

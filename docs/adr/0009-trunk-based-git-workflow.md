@@ -1,6 +1,6 @@
 # 0009. Trunk-based Git workflow
 
-Status: Accepted, 2026-10-25
+Status: Accepted; merge method superseded by [0015](0015-fast-forward-merges-without-squash.md), 2026-10-25
 
 ## Context
 
