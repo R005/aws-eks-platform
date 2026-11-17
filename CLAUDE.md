@@ -52,13 +52,15 @@ docker-compose.yml            local stack: postgres, migrate, api
 
 Each Terraform stack is one root module with its own state. `bootstrap` and `foundation` are applied once and kept. `make up` applies `network → eks → addons`; `make down` destroys them in reverse after `make undeploy` (keep `bootstrap`, `foundation` and the Route 53 zone).
 
-## Working mode for this project (fast mode)
+## Writing style
 
-This overrides the user-level "one or two steps at a time" rule for this project.
+Docs (READMEs, ADRs, OPERATIONS.md):
 
-- Build app code, tests and docs without step-by-step explanations; give a short summary at the end.
-- For DevOps artifacts (Terraform, Helm, CI, Dockerfiles), finish with a short walkthrough of the key decisions, each tagged 🟢 (DevOps core) or 🟡 (skim).
-- Don't pause between steps unless an action needs me.
-- Commit your own work on the current feature branch in small Conventional Commits. Run pre-commit and fix failures; never use --no-verify.
-- Never commit to main and never push. I push and open merge requests.
-- Never run terraform apply/destroy/import, kubectl delete or helm uninstall. Give me the command instead.
+- Write what someone needs to run, operate or understand a decision. Don't restate context, add long intros or recap key points.
+- Use plain sentences, few headings, and tables only where they help. Keep bold to a minimum. No emoji, no em dashes, and no filler words like comprehensive, robust, seamless or leverage.
+- ADRs have Context, Decision and Consequences, a few lines each.
+
+Code (Terraform, Helm, Makefile, scripts, Python):
+
+- Comment why, not what. No comments that restate the code, no section banners, no long docstrings.
+- Keep variable and output descriptions short.

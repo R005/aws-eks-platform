@@ -1,36 +1,18 @@
 # Architecture Decision Records
 
-An ADR is a short document that records one significant decision: its context, what we decided, and the consequences. See [ADR 0001](0001-record-architecture-decisions.md).
-
-## Adding an ADR
-
-1. Copy the template below into `NNNN-short-kebab-title.md`, using the next free number.
-2. Set the Status to `Proposed`, then change it to `Accepted` once the change is merged.
-3. Never rewrite an accepted ADR. To change a decision, write a new ADR and mark the old one `Superseded by NNNN`.
-4. Add the new ADR to the index below.
-
-## Template
+Each ADR records one significant decision ([ADR 0001](0001-record-architecture-decisions.md)). To add one, copy the template into `NNNN-short-kebab-title.md` with the next free number, start it as `Proposed`, mark it `Accepted` once merged, and add it to the index. To change a decision, write a new ADR and mark the old one `Superseded by NNNN`.
 
 ```markdown
 # NNNN. Title
 
-- **Status:** Proposed | Accepted | Superseded by NNNN
-- **Date:** YYYY-MM-DD
+Status: Proposed, YYYY-MM-DD
 
 ## Context
-What problem or force makes this decision necessary?
 
 ## Decision
-What we will do.
 
 ## Consequences
-What becomes easier, what becomes harder, and any follow-ups.
-
-## Alternatives considered
-- Option: why we did not choose it.
 ```
-
-## Index
 
 | No. | Title | Status |
 | --- | --- | --- |
@@ -46,5 +28,5 @@ What becomes easier, what becomes harder, and any follow-ups.
 | [0010](0010-dns-delegated-lab-subdomain.md) | DNS: delegate `lab.<domain>` to Route 53 | Accepted |
 | [0011](0011-gateway-api-for-ingress.md) | Gateway API via AWS Load Balancer Controller | Superseded by 0014 |
 | [0012](0012-api-stack-and-migrations.md) | api stack: uv, SQLAlchemy + psycopg, Alembic as a separate step, distroless runtime | Accepted |
-| [0013](0013-eks-access-entries-only.md) | Cluster access via EKS access entries only (API mode) | Proposed |
+| [0013](0013-eks-access-entries-only.md) | Cluster access via EKS access entries only (API mode) | Accepted |
 | [0014](0014-ingress-via-aws-load-balancer-controller.md) | Ingress via AWS Load Balancer Controller | Accepted |

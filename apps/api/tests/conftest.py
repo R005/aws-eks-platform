@@ -42,7 +42,7 @@ def session_factory() -> Iterator[sessionmaker[Session]]:
 def make_client(
     settings: Settings, session_factory: sessionmaker[Session]
 ) -> Iterator[Callable[..., TestClient]]:
-    """Build a TestClient; keyword arguments override settings (e.g. enable_debug_endpoints)."""
+    """Keyword arguments override settings, for example enable_debug_endpoints=True."""
     with ExitStack() as stack:
 
         def _make(**overrides) -> TestClient:

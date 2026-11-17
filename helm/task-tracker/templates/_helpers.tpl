@@ -1,4 +1,3 @@
-{{/* Standard labels for every object. */}}
 {{- define "task-tracker.labels" -}}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 app.kubernetes.io/name: {{ .Chart.Name }}
@@ -7,7 +6,7 @@ app.kubernetes.io/version: {{ .Values.image.tag | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
-{{/* Selector labels; call with (dict "ctx" $ "component" "api"). Never change them: selectors are immutable. */}}
+{{/* Call with (dict "ctx" $ "component" "api"). Never change these: selectors are immutable. */}}
 {{- define "task-tracker.selectorLabels" -}}
 app.kubernetes.io/name: {{ .ctx.Chart.Name }}
 app.kubernetes.io/instance: {{ .ctx.Release.Name }}
@@ -23,7 +22,7 @@ app.kubernetes.io/component: {{ .component }}
 {{- define "task-tracker.postgresName" -}}{{ .Release.Name }}-postgres{{- end }}
 {{- define "task-tracker.dbSecretName" -}}{{ .Release.Name }}-db{{- end }}
 
-{{/* Database settings shared by the api and the migrate Job (same image, same contract). */}}
+{{/* Shared by the api and the migrate Job. */}}
 {{- define "task-tracker.dbEnv" -}}
 - name: DB_HOST
   value: {{ include "task-tracker.postgresName" . }}
@@ -42,7 +41,7 @@ app.kubernetes.io/component: {{ .component }}
   value: {{ .Values.api.logLevel | quote }}
 {{- end }}
 
-{{/* Pod and container hardening for the api image, matching the Compose x-hardening block. */}}
+{{/* Matches the Compose x-hardening block. */}}
 {{- define "task-tracker.apiPodSecurityContext" -}}
 runAsNonRoot: true
 runAsUser: 65532

@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
-# Fails while the cluster still has objects that make controllers create AWS resources outside Terraform:
-#   - Ingresses and LoadBalancer Services -> ALBs/NLBs, target groups, security groups (AWS Load Balancer Controller)
-#   - PersistentVolumeClaims              -> EBS volumes (EBS CSI driver)
-#   - the app Helm releases given as <namespace>/<release> arguments, which own such objects
-# Destroying the addons stack removes those controllers, so anything still listed here would be orphaned
-# in AWS (and still billed), and could block the VPC destroy in the network stack.
-#
+# Fails while Ingresses, LoadBalancer Services, PVCs or the given Helm releases still exist. Their
+# controllers create ALBs and EBS volumes outside Terraform; destroying addons first would orphan
+# them (still billed) and block the VPC destroy.
 # Usage: scripts/check-cluster-clean.sh <cluster-name> <region> [<namespace>/<release> ...]
 set -euo pipefail
 
@@ -13,8 +9,7 @@ cluster="${1:?usage: $0 <cluster-name> <region> [<namespace>/<release> ...]}"
 region="${2:?usage: $0 <cluster-name> <region> [<namespace>/<release> ...]}"
 shift 2
 
-# Temporary kubeconfig: always targets this cluster and leaves the user's kubeconfig untouched.
-# It holds no token, only an exec entry that runs `aws eks get-token`.
+# Temporary kubeconfig, so the check always targets this cluster and the user's file is untouched.
 kubeconfig="$(mktemp)"
 trap 'rm -f "$kubeconfig"' EXIT
 aws eks update-kubeconfig --name "$cluster" --region "$region" --kubeconfig "$kubeconfig" >/dev/null
@@ -25,7 +20,7 @@ ingresses="$(k get ingress --all-namespaces --no-headers -o custom-columns=NAMES
 lb_services="$(k get service --all-namespaces -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}')"
 pvcs="$(k get pvc --all-namespaces --no-headers -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name)"
 
-# Helm stores each release as Secrets labelled owner=helm,name=<release> in the release namespace.
+# Helm stores releases as Secrets labelled owner=helm,name=<release>.
 releases=""
 for ref in "$@"; do
   if [[ -n "$(k get secret --namespace "${ref%%/*}" --selector "owner=helm,name=${ref#*/}" -o name)" ]]; then

@@ -1,4 +1,4 @@
-# Headless Service: gives the StatefulSet pod a stable DNS name and resolves straight to its IP.
+# Headless: a stable DNS name that resolves straight to the pod IP.
 apiVersion: v1
 kind: Service
 metadata:

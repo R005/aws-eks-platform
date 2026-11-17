@@ -1,39 +1,39 @@
 variable "region" {
-  description = "AWS region for the VPC."
+  description = "AWS region."
   type        = string
 }
 
 variable "project" {
-  description = "Project name, used as a prefix for resource names."
+  description = "Prefix for resource names."
   type        = string
   default     = "eks-platform"
 }
 
 variable "env" {
-  description = "Environment name, used in resource names and tags."
+  description = "Environment name."
   type        = string
   default     = "dev"
 }
 
 variable "owner" {
-  description = "Team responsible for these resources (used in tags)."
+  description = "Owner tag."
   type        = string
 }
 
 variable "vpc_cidr" {
-  description = "CIDR block of the VPC."
+  description = "VPC CIDR block."
   type        = string
   default     = "10.0.0.0/16"
 }
 
 variable "az_count" {
-  description = "Number of availability zones to spread the subnets across."
+  description = "Number of availability zones."
   type        = number
   default     = 2
 }
 
 variable "single_nat_gateway" {
-  description = "One shared NAT Gateway (true, lab) or one per AZ (false, production). See ADR 0007."
+  description = "One shared NAT Gateway instead of one per AZ (ADR 0007)."
   type        = bool
   default     = true
 }

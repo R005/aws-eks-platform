@@ -6,12 +6,11 @@ from sqlalchemy.engine import URL
 
 
 class Settings(BaseSettings):
-    # Field names map to upper-case env vars: db_host <- DB_HOST, and so on.
     db_host: str
     db_port: int = 5432
     db_name: str
     db_user: str
-    db_password: SecretStr  # required, no default; SecretStr masks it in repr and logs
+    db_password: SecretStr  # masked in repr and logs
     db_connect_timeout: int = 3
     log_level: str = "INFO"
     enable_debug_endpoints: bool = False

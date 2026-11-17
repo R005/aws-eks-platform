@@ -1,11 +1,10 @@
 provider "aws" {
-  region = var.region # never hardcoded: comes from tfvars
+  region = var.region
 
-  # Applied to every resource this provider creates.
   default_tags {
     tags = {
       Project   = var.project
-      Env       = "shared" # state storage serves all environments
+      Env       = "shared" # state storage serves every environment
       Owner     = var.owner
       ManagedBy = "terraform"
       Stack     = "bootstrap"

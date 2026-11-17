@@ -1,29 +1,29 @@
 output "vpc_id" {
-  description = "ID of the VPC."
+  description = "VPC ID."
   value       = module.vpc.vpc_id
 }
 
 output "vpc_cidr" {
-  description = "CIDR block of the VPC."
+  description = "VPC CIDR block."
   value       = module.vpc.vpc_cidr_block
 }
 
 output "azs" {
-  description = "Availability zones the subnets are spread across."
+  description = "Availability zones of the subnets."
   value       = module.vpc.azs
 }
 
 output "private_subnet_ids" {
-  description = "IDs of the private subnets (worker nodes, internal load balancers)."
+  description = "Private subnet IDs (nodes, internal load balancers)."
   value       = module.vpc.private_subnets
 }
 
 output "public_subnet_ids" {
-  description = "IDs of the public subnets (NAT Gateway, internet-facing load balancers)."
+  description = "Public subnet IDs (NAT Gateway, internet-facing load balancers)."
   value       = module.vpc.public_subnets
 }
 
 output "nat_gateway_ids" {
-  description = "IDs of the NAT Gateways."
+  description = "NAT Gateway IDs."
   value       = module.vpc.natgw_ids
 }

@@ -1,7 +1,4 @@
-"""CPU and memory stress endpoints for autoscaling and OOM drills.
-
-Mounted only when ENABLE_DEBUG_ENDPOINTS=true; otherwise these paths return 404.
-"""
+"""Stress endpoints for autoscaling and OOM drills, mounted when ENABLE_DEBUG_ENDPOINTS=true."""
 
 import logging
 import multiprocessing
@@ -33,7 +30,7 @@ def _hold_memory(mb: int, seconds: int) -> None:
 
 
 def start_cpu_burn(seconds: int, workers: int) -> None:
-    multiprocessing.active_children()  # reap finished burners
+    multiprocessing.active_children()  # reaps finished burners
     # Separate processes keep the event loop (and the probes) responsive, and still count
     # against the container's CPU cgroup. "spawn" avoids forking a multi-threaded server.
     ctx = multiprocessing.get_context("spawn")

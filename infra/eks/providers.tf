@@ -1,7 +1,6 @@
 provider "aws" {
-  region = var.region # never hardcoded: comes from tfvars
+  region = var.region
 
-  # Applied to every resource this provider creates.
   default_tags {
     tags = {
       Project   = var.project

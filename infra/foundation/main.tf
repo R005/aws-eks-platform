@@ -1,20 +1,16 @@
-# Persistent resources that outlive the cluster: the image registry and the app secrets.
-# Not part of make up / make down, like bootstrap.
-
-# --- ECR ----------------------------------------------------------------------
+# Resources that outlive the cluster. Applied once, not part of make up / make down.
 
 resource "aws_ecr_repository" "api" {
   name = "${var.project}/api"
 
-  # A tag always points at the same image: a pushed Git SHA can never be overwritten.
+  # A pushed Git SHA tag can never be overwritten.
   image_tag_mutability = "IMMUTABLE"
 
-  # Basic scanning for OS package CVEs on every push.
   image_scanning_configuration {
     scan_on_push = true
   }
 
-  # AES256 (S3-managed keys) is the default; a customer-managed KMS key is not needed for app images.
+  # A customer-managed KMS key adds nothing for app images.
   encryption_configuration {
     encryption_type = "AES256"
   }
@@ -28,7 +24,7 @@ resource "aws_ecr_lifecycle_policy" "api" {
       rulePriority = 1
       description  = "Keep the last ${var.ecr_keep_images} images"
       selection = {
-        tagStatus   = "any" # tagged and untagged (for example, replaced attestation manifests)
+        tagStatus   = "any" # includes untagged, such as replaced attestation manifests
         countType   = "imageCountMoreThan"
         countNumber = var.ecr_keep_images
       }
@@ -37,9 +33,7 @@ resource "aws_ecr_lifecycle_policy" "api" {
   })
 }
 
-# --- Database secret ----------------------------------------------------------
 # Read by External Secrets Operator, whose IRSA role may read <project>/<env>/* (addons stack).
-
 resource "aws_secretsmanager_secret" "db" {
   name        = "${var.project}/${var.env}/db"
   description = "PostgreSQL password for the task tracker (${var.env})"
@@ -47,7 +41,7 @@ resource "aws_secretsmanager_secret" "db" {
   recovery_window_in_days = 7 # lab value; the default is 30
 }
 
-# Generated on every plan/apply but never stored in plan or state (ephemeral resource).
+# Ephemeral: never stored in plan or state.
 ephemeral "random_password" "db" {
   length           = 32
   special          = true
@@ -57,51 +51,40 @@ ephemeral "random_password" "db" {
 resource "aws_secretsmanager_secret_version" "db" {
   secret_id = aws_secretsmanager_secret.db.id
 
-  # Write-only: sent to AWS, never persisted in state. Only written when the version changes,
-  # so the password generated on later runs is discarded until db_password_version is bumped.
+  # Write-only, and only sent when the version changes: later runs generate a password that is
+  # discarded until db_password_version is bumped.
   secret_string_wo         = jsonencode({ password = ephemeral.random_password.db.result })
   secret_string_wo_version = var.db_password_version
 }
 
-# --- DNS ----------------------------------------------------------------------
-# Public zone for lab.<domain> (ADR 0010). The parent domain delegates to it with NS records
-# set once at its DNS provider. Kept between sessions: a recreated zone gets new name servers,
-# which means redoing the delegation and waiting for propagation.
-
+# lab.<domain> (ADR 0010), delegated from the parent domain. Kept between sessions, because a
+# recreated zone gets new name servers and the delegation would have to be redone.
 resource "aws_route53_zone" "lab" {
   name    = "lab.${var.domain_name}"
   comment = "Delegated subdomain for ${var.project} app hostnames"
 
-  # force_destroy is left false: a destroy fails while the zone still holds records
-  # (for example ones written by ExternalDNS), so they are never deleted by accident.
-
-  # Terraform refuses any plan that destroys the zone, including a full terraform destroy of this
-  # stack. Removing the zone on purpose means deleting this block first, as a reviewed change.
+  # force_destroy stays false, so records written by ExternalDNS are never deleted by accident.
+  # Removing the zone on purpose means deleting this block first, as a reviewed change.
   lifecycle {
     prevent_destroy = true
   }
 }
 
-# --- TLS certificate ----------------------------------------------------------
-# One ACM certificate for lab.<domain> and *.lab.<domain>, used by the ALB (ADR 0014). The AWS Load
-# Balancer Controller finds it by the Ingress host, so its ARN is never passed around. Same region
-# as the cluster: an ALB can only use certificates from its own region.
-
+# Covers lab.<domain> and *.lab.<domain>. The AWS Load Balancer Controller finds it by the Ingress
+# host, so the ARN is never passed around (ADR 0014). It must be in the cluster's region.
 resource "aws_acm_certificate" "lab" {
   domain_name               = aws_route53_zone.lab.name
   subject_alternative_names = ["*.${aws_route53_zone.lab.name}"]
   validation_method         = "DNS"
 
-  # Any replacement (for example a new SAN) issues the new certificate before the old one is
-  # deleted, so a listener that still uses the old one never blocks the change.
+  # A replacement is issued before the old one is deleted, so a listener using it never blocks.
   lifecycle {
     create_before_destroy = true
   }
 }
 
-# ACM asks for one CNAME per name. The apex and the wildcard get the same record, so both
-# instances write the same CNAME; allow_overwrite lets the second one succeed instead of
-# failing with "already exists". ACM keeps using the records for automatic renewal.
+# The apex and the wildcard need the same CNAME, so the second write must overwrite the first.
+# ACM keeps using these records for renewal.
 resource "aws_route53_record" "lab_cert_validation" {
   for_each = {
     for dvo in aws_acm_certificate.lab.domain_validation_options : dvo.domain_name => {
@@ -119,8 +102,7 @@ resource "aws_route53_record" "lab_cert_validation" {
   allow_overwrite = true
 }
 
-# Not a real AWS object: it waits during apply until ACM reports the certificate as ISSUED
-# (usually a few minutes; it fails after 75 minutes if the delegation does not resolve).
+# Waits until the certificate is ISSUED; fails after 75 minutes if the delegation does not resolve.
 resource "aws_acm_certificate_validation" "lab" {
   certificate_arn         = aws_acm_certificate.lab.arn
   validation_record_fqdns = [for record in aws_route53_record.lab_cert_validation : record.fqdn]

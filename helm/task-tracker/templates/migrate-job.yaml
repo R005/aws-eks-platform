@@ -1,7 +1,5 @@
-# Alembic migrations, once per release, from the api image (OPERATIONS.md).
-# post-install: on the first install the database and its Secret are normal release resources,
-# which Helm creates before post-install hooks (a pre-install hook would run before they exist).
-# pre-upgrade: on every later release the schema is migrated before the new api pods roll out.
+# post-install, not pre-install: on the first install the database and its Secret do not exist
+# before the release objects. pre-upgrade migrates before new api pods roll out.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -12,7 +10,7 @@ metadata:
   annotations:
     helm.sh/hook: post-install,pre-upgrade
     helm.sh/hook-weight: "0"
-    # Keep a failed Job for its logs; it is replaced on the next run and removed on success.
+    # A failed Job is kept for its logs until the next run.
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 spec:
   backoffLimit: {{ .Values.migrate.backoffLimit }}

@@ -1,9 +1,7 @@
-# Local stack: postgres -> migrate (one-shot) -> api.
-# Values come from .env (copy .env.example). Usage: docker compose up --build
+# Values come from .env (copy .env.example).
 
 name: eks-platform
 
-# Environment shared by the api and the migration job (same image, same settings).
 x-api-env: &api-env
   DB_HOST: ${DB_HOST:-postgres}
   DB_PORT: ${DB_PORT:-5432}
@@ -13,7 +11,7 @@ x-api-env: &api-env
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   ENABLE_DEBUG_ENDPOINTS: ${ENABLE_DEBUG_ENDPOINTS:-false}
 
-# Container hardening, mirroring the pod securityContext planned for Kubernetes.
+# Matches the Helm chart's securityContext.
 x-hardening: &hardening
   read_only: true
   tmpfs:
@@ -31,11 +29,10 @@ services:
       POSTGRES_USER: ${DB_USER:?set DB_USER in .env}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
     volumes:
-      # Postgres 18+ keeps data under /var/lib/postgresql/<major>/; mount the parent.
+      # Postgres 18 keeps data under /var/lib/postgresql/<major>/.
       - pgdata:/var/lib/postgresql
     healthcheck:
-      # -h 127.0.0.1: during first-run init Postgres listens on the Unix socket only,
-      # so a TCP check stays unhealthy until the real server is up.
+      # TCP, because first-run init listens on the Unix socket only.
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 3s
@@ -45,7 +42,7 @@ services:
     restart: unless-stopped
 
   migrate:
-    # Same image as the api, built once by the api service; never pulled (it's local-only).
+    # Built by the api service; local only.
     image: eks-platform-api:dev
     pull_policy: never
     entrypoint: ["/app/.venv/bin/alembic"]
@@ -70,8 +67,7 @@ services:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      # Readiness, not liveness: "healthy" means the api can reach the database.
-      # Python instead of curl because the distroless image has no curl and no shell.
+      # The distroless image has no curl or shell.
       test:
         - CMD
         - /app/.venv/bin/python
@@ -81,7 +77,7 @@ services:
       timeout: 3s
       retries: 3
       start_period: 10s
-    # Matches the Kubernetes default terminationGracePeriodSeconds; the app drains within 20s.
+    # The app drains within 20s.
     stop_grace_period: 30s
     restart: unless-stopped
 

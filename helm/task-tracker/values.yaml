@@ -1,11 +1,10 @@
-# Defaults for the task-tracker chart. make deploy sets image.registry, image.tag,
-# externalSecrets.region and ingress.host from the environment; nothing account-specific is committed.
+# make deploy sets image.registry, image.tag, externalSecrets.region and ingress.host.
 
 image:
   registry: ""                  # <account-id>.dkr.ecr.<region>.amazonaws.com (required)
   repository: eks-platform/api
   tag: ""                       # short Git SHA pushed by make image (required)
-  pullPolicy: IfNotPresent      # tags are immutable, so a cached image is always correct
+  pullPolicy: IfNotPresent      # tags are immutable
 
 api:
   replicas: 2
@@ -17,9 +16,8 @@ api:
       memory: 128Mi
     limits:
       memory: 256Mi             # no CPU limit: it would throttle a replica below one core
-  # Seconds the pod keeps serving before SIGTERM, while it is removed from Service endpoints and
-  # deregistered from the ALB target group (which takes longer than the endpoint update).
-  # The grace period is derived from it: preStopSleepSeconds + 25.
+  # Keeps serving while the ALB deregisters the pod, which is slower than the endpoint update.
+  # The grace period is preStopSleepSeconds + 25.
   preStopSleepSeconds: 15
 
 debugEndpoints:
@@ -31,7 +29,7 @@ database:
   port: 5432
 
 postgres:
-  # Same pinned image as docker-compose.yml.
+  # Same as docker-compose.yml.
   image: postgres:18.6-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
   storage:
     size: 10Gi
@@ -45,9 +43,9 @@ postgres:
 
 ingress:
   enabled: true
-  className: alb                # IngressClass created by the AWS Load Balancer Controller chart
+  className: alb
   host: ""                      # tasks.lab.<domain>, set by make deploy (required)
-  healthCheckPath: /readyz      # ALB target health check
+  healthCheckPath: /readyz
 
 migrate:
   backoffLimit: 2

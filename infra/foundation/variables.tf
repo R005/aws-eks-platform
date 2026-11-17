@@ -1,39 +1,39 @@
 variable "region" {
-  description = "AWS region for the ECR repository and the secret (same as the cluster)."
+  description = "AWS region, the same as the cluster."
   type        = string
 }
 
 variable "project" {
-  description = "Project name, used as a prefix for resource names."
+  description = "Prefix for resource names."
   type        = string
   default     = "eks-platform"
 }
 
 variable "env" {
-  description = "Environment name, used in the secret name and tags."
+  description = "Environment name."
   type        = string
   default     = "dev"
 }
 
 variable "owner" {
-  description = "Team responsible for these resources (used in tags)."
+  description = "Owner tag."
   type        = string
 }
 
 variable "ecr_keep_images" {
-  description = "Number of most recent images kept in each ECR repository; older ones are expired."
+  description = "Number of recent images ECR keeps."
   type        = number
   default     = 20
 }
 
 variable "db_password_version" {
-  description = "Version of the generated database password. Increase it to generate and store a new password."
+  description = "Bump to generate and store a new database password."
   type        = number
   default     = 1
 }
 
 variable "domain_name" {
-  description = "Parent domain (for example example.com). The hosted zone is lab.<domain_name>. Set it in terraform.tfvars; never commit it."
+  description = "Parent domain; the zone is lab.<domain_name>. Set in terraform.tfvars, never committed."
   type        = string
 
   validation {

@@ -1,4 +1,4 @@
 terraform {
-  # Settings come from backend.hcl (gitignored), because the bucket name contains the account ID.
+  # Settings come from the gitignored backend.hcl, because the bucket name contains the account ID.
   backend "s3" {}
 }

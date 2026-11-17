@@ -35,7 +35,7 @@ def create_task(body: TaskCreate, session: SessionDep) -> Task:
     task = Task(title=body.title)
     session.add(task)
     session.commit()
-    session.refresh(task)  # load server-generated id and created_at
+    session.refresh(task)  # server-generated id and created_at
     return task
 
 

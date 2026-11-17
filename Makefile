@@ -1,29 +1,23 @@
-# Platform lifecycle for the costly stacks, plus the api image and the task-tracker release.
-# bootstrap and foundation are applied once by hand and kept.
-# Each stack reads its gitignored backend.hcl and terraform.tfvars (see infra/<stack>/README.md).
-# Every apply and destroy asks for confirmation; nothing is auto-approved.
+# bootstrap and foundation are applied once by hand and kept. Applies and destroys always prompt.
 
 TF := terraform
 
-# The region comes from the environment or the active AWS profile, never from code.
 CLUSTER ?= eks-platform-dev
 REGION  ?= $(or $(AWS_REGION),$(AWS_DEFAULT_REGION),$(shell aws configure get region 2>/dev/null))
 
-# App image and release. The account ID is looked up at most once, and only by targets that use it.
+# Looked up at most once, and only by targets that use it.
 AWS_ACCOUNT_ID = $(eval AWS_ACCOUNT_ID := $(shell aws sts get-caller-identity --query Account --output text))$(AWS_ACCOUNT_ID)
 REGISTRY      = $(AWS_ACCOUNT_ID).dkr.ecr.$(REGION).amazonaws.com
 IMAGE_REPO   := eks-platform/api
 TAG          ?= $(shell git rev-parse --short HEAD)
 PLATFORM     ?= linux/amd64
-# Extra flags appended to helm upgrade, for example HELM_ARGS="--set debugEndpoints.enabled=true".
+# Extra helm upgrade flags, for example HELM_ARGS="--set debugEndpoints.enabled=true".
 HELM_ARGS    ?=
 RELEASE      := task-tracker
 NAMESPACE    := tasks
-# Context name written by `aws eks update-kubeconfig` (the cluster ARN). Passed explicitly so
-# deploy and undeploy never act on whatever context happens to be current.
+# Explicit, so deploy and undeploy never act on whatever context happens to be current.
 KUBE_CONTEXT ?= arn:aws:eks:$(REGION):$(AWS_ACCOUNT_ID):cluster/$(CLUSTER)
-# Public host of the api. The zone name (lab.<domain>) comes from the foundation stack's output,
-# read at most once and only by deploy, so the domain is never written into a tracked file.
+# Read from the foundation output so the domain never appears in a tracked file.
 APP_NAME     := tasks
 LAB_ZONE      = $(eval LAB_ZONE := $(shell $(TF) -chdir=infra/foundation output -raw lab_zone_name 2>/dev/null))$(LAB_ZONE)
 APP_HOST     ?= $(if $(LAB_ZONE),$(APP_NAME).$(LAB_ZONE))

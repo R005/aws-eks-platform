@@ -1,22 +1,15 @@
-# 0007. Single NAT Gateway in the lab (per-AZ in production)
+# 0007. Single NAT Gateway in the lab
 
-- **Status:** Accepted
-- **Date:** 2026-10-25
+Status: Accepted, 2026-10-25
 
 ## Context
-Worker nodes run in private subnets across 2 AZs and need outbound internet access (pulling images, AWS APIs without VPC endpoints, package installs). A NAT Gateway costs about $0.045/h (about $33/month) **per gateway**, plus data processing charges.
+
+Nodes in private subnets across two AZs need outbound internet access. Each NAT Gateway costs about $33 per month plus data processing.
 
 ## Decision
-- **Lab:** one NAT Gateway in a single public subnet, with every private subnet's route table pointing at it (`single_nat_gateway = true` style).
-- **Production:** one NAT Gateway **per AZ**, with each private subnet routing to the NAT in its own AZ. This is a variable in the `network` stack, so it's a configuration change rather than a code change.
+
+The lab uses one NAT Gateway, and every private subnet routes through it. Production uses one per AZ. This is a variable in the `network` stack, not a code change.
 
 ## Consequences
-- Saves about $33/month for each AZ beyond the first.
-- **A single point of failure:** if that AZ or its NAT has problems, nodes in *every* AZ lose egress.
-- Traffic from the other AZ crosses AZs to reach the NAT, which adds cross-AZ data charges and a little latency.
 
-## Alternatives considered
-- **NAT per AZ:** the correct production design, but it doubles NAT cost in the lab.
-- **VPC endpoints only (ECR, S3, STS, etc.):** cuts NAT traffic, and some endpoints are worth adding later. Interface endpoints cost per hour per AZ too, and don't cover the general internet.
-- **NAT instance:** cheaper, but we would have to patch, scale and make it highly available ourselves.
-- **Public subnets for nodes:** no NAT needed, but nodes would be exposed directly.
+It saves about $33 per month for each extra AZ. The NAT Gateway is a single point of failure: if its AZ has problems, every AZ loses egress. Traffic from the other AZ pays cross-AZ data charges. VPC endpoints may be added later to cut NAT traffic.

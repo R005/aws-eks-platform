@@ -1,5 +1,4 @@
-# Single-replica PostgreSQL (ADR 0002). Data lives on an EBS gp3 volume from the volumeClaimTemplate;
-# the PVC outlives the pod and the release, and is deleted by make undeploy.
+# ADR 0002. The PVC outlives the release; make undeploy deletes it.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -20,10 +19,10 @@ spec:
         app.kubernetes.io/component: postgres
     spec:
       automountServiceAccountToken: false
-      terminationGracePeriodSeconds: 60   # time for a clean shutdown checkpoint
+      terminationGracePeriodSeconds: 60   # time for a shutdown checkpoint
       securityContext:
-        # The image's postgres user. Running as it directly skips the entrypoint's root-only chown;
-        # fsGroup makes the fresh EBS volume writable for it.
+        # The image's postgres user, which skips the entrypoint's root-only chown. fsGroup makes the
+        # fresh EBS volume writable.
         runAsNonRoot: true
         runAsUser: 999
         runAsGroup: 999
@@ -48,8 +47,7 @@ spec:
                   name: {{ include "task-tracker.dbSecretName" . }}
                   key: DB_PASSWORD
           readinessProbe:
-            # -h 127.0.0.1: during first-run init Postgres listens on the Unix socket only,
-            # so the pod stays unready until the real server accepts TCP connections.
+            # TCP, because first-run init listens on the Unix socket only.
             exec:
               command: ["sh", "-c", 'pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
             periodSeconds: 5
@@ -62,7 +60,7 @@ spec:
             capabilities:
               drop: ["ALL"]
           volumeMounts:
-            # Postgres 18+ keeps data under /var/lib/postgresql/<major>/; mount the parent.
+            # Postgres 18 keeps data under /var/lib/postgresql/<major>/.
             - name: data
               mountPath: /var/lib/postgresql
   volumeClaimTemplates:

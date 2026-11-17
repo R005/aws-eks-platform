@@ -1,10 +1,8 @@
 locals {
-  name = "${var.project}-${var.env}" # eks-platform-dev
+  name = "${var.project}-${var.env}"
 }
 
-# --- Network lookup -----------------------------------------------------------
 # Found by tag, so this stack does not read the network stack's state.
-
 data "aws_vpc" "this" {
   tags = {
     Name    = "${local.name}-vpc"
@@ -13,7 +11,6 @@ data "aws_vpc" "this" {
   }
 }
 
-# Nodes and the control plane ENIs go into the private subnets.
 data "aws_subnets" "private" {
   filter {
     name   = "vpc-id"
@@ -32,10 +29,7 @@ data "aws_subnets" "private" {
   }
 }
 
-# --- Cluster admin role -------------------------------------------------------
-# IAM Identity Center creates one role per permission set, named
-# AWSReservedSSO_<permission-set>_<random-suffix>. Look it up, never hardcode it.
-
+# IAM Identity Center names the role AWSReservedSSO_<permission-set>_<random-suffix>.
 data "aws_iam_roles" "sso_admin" {
   name_regex  = "^AWSReservedSSO_${var.admin_permission_set_name}_[0-9a-f]+$"
   path_prefix = "/aws-reserved/sso.amazonaws.com/"
@@ -50,11 +44,9 @@ data "aws_iam_roles" "sso_admin" {
 
 data "aws_partition" "current" {}
 
-# --- EKS cluster --------------------------------------------------------------
-
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 21.29" # any 21.x from 21.29 on; the module source is not in the lock file, so pin it here
+  version = "~> 21.29" # modules are not in the lock file, so pin here
 
   name               = local.name
   kubernetes_version = var.kubernetes_version
@@ -62,24 +54,22 @@ module "eks" {
   vpc_id     = data.aws_vpc.this.id
   subnet_ids = data.aws_subnets.private.ids
 
-  # API endpoint reachable from the internet (kubectl from a laptop and CI runners),
-  # and from inside the VPC for the nodes. Requests still need IAM authentication.
+  # Public for kubectl from a laptop and CI runners, private for the nodes. Both need IAM auth.
   endpoint_public_access  = true
   endpoint_private_access = true
 
-  # Creates the IAM OIDC provider for IRSA (ADR 0005).
+  # IAM OIDC provider for IRSA (ADR 0005).
   enable_irsa = true
 
-  # Access entries only: the aws-auth ConfigMap is not used.
+  # Access entries only, no aws-auth ConfigMap (ADR 0013).
   authentication_mode = "API"
 
-  # Do not grant admin implicitly to whoever runs apply; the SSO role below is granted explicitly.
-  # Both would create an access entry for the same role and the apply would fail.
+  # Off because it would create a second access entry for the same SSO role and fail the apply.
   enable_cluster_creator_admin_permissions = false
 
   access_entries = {
     sso_admin = {
-      principal_arn = one(data.aws_iam_roles.sso_admin.arns) # path included; access entries accept it
+      principal_arn = one(data.aws_iam_roles.sso_admin.arns)
 
       policy_associations = {
         cluster_admin = {
@@ -92,10 +82,9 @@ module "eks" {
     }
   }
 
-  # EKS managed add-ons, at the latest version compatible with the cluster version.
   addons = {
     vpc-cni = {
-      before_compute = true # must exist before nodes join, or they never become Ready
+      before_compute = true # nodes never become Ready without it
     }
     kube-proxy = {}
     coredns    = {}
@@ -103,7 +92,7 @@ module "eks" {
 
   eks_managed_node_groups = {
     default = {
-      ami_type       = "AL2023_x86_64_STANDARD" # Amazon Linux 2023, amd64
+      ami_type       = "AL2023_x86_64_STANDARD" # amd64 (ADR 0006)
       instance_types = var.node_instance_types
       capacity_type  = "ON_DEMAND"
 

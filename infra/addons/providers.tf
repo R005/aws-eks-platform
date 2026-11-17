@@ -1,7 +1,6 @@
 provider "aws" {
-  region = var.region # never hardcoded: comes from tfvars
+  region = var.region
 
-  # Applied to every resource this provider creates.
   default_tags {
     tags = {
       Project   = var.project
@@ -13,9 +12,7 @@ provider "aws" {
   }
 }
 
-# Both Kubernetes providers authenticate with a short-lived token from `aws eks get-token`,
-# fetched on every run with the caller's AWS credentials (AWS_PROFILE from the environment).
-# No static token is written to state or to a kubeconfig file.
+# Short-lived token from aws eks get-token on every run, so no token lands in state or a kubeconfig.
 
 provider "kubernetes" {
   host                   = data.aws_eks_cluster.this.endpoint
@@ -28,7 +25,6 @@ provider "kubernetes" {
   }
 }
 
-# Helm provider 3.x: `kubernetes` and `exec` are attributes, not nested blocks.
 provider "helm" {
   kubernetes = {
     host                   = data.aws_eks_cluster.this.endpoint

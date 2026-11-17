@@ -1,15 +1,12 @@
 locals {
-  name = "${var.project}-${var.env}" # eks-platform-dev, also the cluster name
+  name = "${var.project}-${var.env}" # also the cluster name
 }
 
-# --- Cluster lookup -----------------------------------------------------------
 # Found by name, so this stack does not read the eks stack's state.
-
 data "aws_eks_cluster" "this" {
   name = local.name
 }
 
-# The IAM OIDC provider created by the eks stack, found by the cluster's issuer URL.
 # Every IRSA trust policy in this stack federates through it (ADR 0005).
 data "aws_iam_openid_connect_provider" "this" {
   url = data.aws_eks_cluster.this.identity[0].oidc[0].issuer
@@ -20,25 +17,23 @@ data "aws_partition" "current" {}
 data "aws_caller_identity" "current" {}
 
 locals {
-  irsa_role_annotation = "eks.amazonaws.com/role-arn" # read by the EKS pod identity webhook
+  irsa_role_annotation = "eks.amazonaws.com/role-arn"
 }
 
-# --- EBS CSI driver -----------------------------------------------------------
-# Provisions EBS volumes for PersistentVolumeClaims (the Postgres StatefulSet, ADR 0002).
-
+# EBS volumes for PersistentVolumeClaims (the Postgres StatefulSet, ADR 0002).
 locals {
-  ebs_csi_service_account = "ebs-csi-controller-sa" # created by the add-on in kube-system
+  ebs_csi_service_account = "ebs-csi-controller-sa" # created by the add-on
 }
 
 module "ebs_csi_irsa" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts"
-  version = "~> 6.8" # any 6.x from 6.8 on; the module source is not in the lock file, so pin it here
+  version = "~> 6.8" # modules are not in the lock file, so pin here
 
   name            = "${local.name}-ebs-csi"
   use_name_prefix = false
   description     = "EBS CSI driver controller (IRSA)"
 
-  # AWS-managed policy, kept up to date by AWS as the driver gains features.
+  # AWS keeps this managed policy in step with the driver.
   policies = {
     AmazonEBSCSIDriverPolicy = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
   }
@@ -57,13 +52,12 @@ resource "aws_eks_addon" "ebs_csi" {
   addon_version            = var.ebs_csi_addon_version
   service_account_role_arn = module.ebs_csi_irsa.arn
 
-  # Terraform is the source of truth: overwrite manual edits to add-on managed fields.
+  # Terraform wins over manual edits to add-on managed fields.
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
 }
 
-# Default StorageClass: encrypted gp3. The gp2 class EKS creates uses the in-tree provisioner
-# and is not marked default on current EKS versions, so this is the only default.
+# The only default StorageClass: the gp2 class EKS creates is not marked default on current versions.
 resource "kubernetes_storage_class_v1" "gp3" {
   metadata {
     name = "gp3"
@@ -74,21 +68,19 @@ resource "kubernetes_storage_class_v1" "gp3" {
 
   storage_provisioner    = "ebs.csi.aws.com"
   reclaim_policy         = "Delete"
-  volume_binding_mode    = "WaitForFirstConsumer" # create the volume in the AZ of the scheduled pod
+  volume_binding_mode    = "WaitForFirstConsumer" # volume lands in the scheduled pod's AZ
   allow_volume_expansion = true
 
   parameters = {
     type                        = "gp3"
-    encrypted                   = "true" # with the account's default aws/ebs KMS key
+    encrypted                   = "true" # account default aws/ebs key
     "csi.storage.k8s.io/fstype" = "ext4"
   }
 
   depends_on = [aws_eks_addon.ebs_csi]
 }
 
-# --- AWS Load Balancer Controller ---------------------------------------------
-# Creates ALBs for Ingress objects (ADR 0014) and NLBs for LoadBalancer Services.
-
+# ALBs for Ingress objects (ADR 0014).
 locals {
   lbc_service_account = "aws-load-balancer-controller"
 }
@@ -101,9 +93,8 @@ module "lbc_irsa" {
   use_name_prefix = false
   description     = "AWS Load Balancer Controller (IRSA)"
 
-  # The official policy published with this controller release (docs/install/iam_policy.json at
-  # the matching tag), vendored so it changes only with the chart version. A missing file for a
-  # new chart version fails the plan.
+  # Vendored docs/install/iam_policy.json from the matching controller tag, so it changes only with
+  # the chart version. A chart bump without the new file fails the plan.
   policy_name             = "${local.name}-aws-load-balancer-controller"
   source_policy_documents = [file("${path.module}/policies/aws-load-balancer-controller-v${var.lbc_chart_version}.json")]
 
@@ -124,7 +115,7 @@ resource "helm_release" "aws_load_balancer_controller" {
 
   values = [yamlencode({
     clusterName = data.aws_eks_cluster.this.name
-    # Set explicitly: IMDSv2 with a hop limit of 1 keeps pods from discovering them from instance metadata.
+    # Pods cannot reach IMDS (hop limit 1), so region and VPC must be set.
     region = var.region
     vpcId  = data.aws_eks_cluster.this.vpc_config[0].vpc_id
 
@@ -136,15 +127,12 @@ resource "helm_release" "aws_load_balancer_controller" {
   })]
 }
 
-# --- External Secrets Operator ------------------------------------------------
-# Syncs AWS Secrets Manager secrets into Kubernetes Secrets (ADR 0004). The ClusterSecretStore
-# is a custom resource, so it ships with the app deployment once these CRDs exist.
-
+# Syncs Secrets Manager into Kubernetes Secrets (ADR 0004). The SecretStore ships with the app chart.
 locals {
   eso_namespace       = "external-secrets"
   eso_service_account = "external-secrets"
 
-  # Secrets Manager appends a random 6-character suffix to secret ARNs, so match on the name prefix.
+  # Secret ARNs end in a random suffix, so match on the name prefix.
   eso_secret_arn_pattern = "arn:${data.aws_partition.current.partition}:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:${var.project}/${var.env}/*"
 }
 
@@ -156,8 +144,7 @@ module "external_secrets_irsa" {
   use_name_prefix = false
   description     = "External Secrets Operator (IRSA)"
 
-  # Custom statement instead of attach_external_secrets_policy, which also grants
-  # secretsmanager:ListSecrets, BatchGetSecretValue and ssm:DescribeParameters on "*".
+  # Not attach_external_secrets_policy, which also grants List/BatchGet and ssm:DescribeParameters on "*".
   policy_name = "${local.name}-external-secrets"
   permissions = {
     ReadEnvSecrets = {
@@ -201,10 +188,7 @@ resource "helm_release" "external_secrets" {
   depends_on = [helm_release.aws_load_balancer_controller]
 }
 
-# --- metrics-server -----------------------------------------------------------
-# Resource metrics API for kubectl top and the HorizontalPodAutoscaler. Published by EKS as a
-# managed add-on, so AWS builds and patches it. It calls no AWS APIs, so it needs no IAM role.
-
+# For kubectl top and the HPA. Calls no AWS APIs, so no IAM role.
 resource "aws_eks_addon" "metrics_server" {
   cluster_name  = data.aws_eks_cluster.this.name
   addon_name    = "metrics-server"
@@ -217,10 +201,8 @@ resource "aws_eks_addon" "metrics_server" {
   depends_on = [helm_release.aws_load_balancer_controller]
 }
 
-# --- ExternalDNS --------------------------------------------------------------
-# Creates Route 53 records for Ingress hosts, only in the delegated lab.<domain> zone (ADR 0010).
-
-# Found by name, so this stack does not read the foundation stack's state.
+# ExternalDNS writes only to lab.<domain> (ADR 0010). Found by name, so this stack does not read
+# the foundation stack's state.
 data "aws_route53_zone" "lab" {
   name         = "lab.${var.domain_name}"
   private_zone = false
@@ -239,11 +221,9 @@ module "external_dns_irsa" {
   use_name_prefix = false
   description     = "ExternalDNS (IRSA)"
 
-  # Custom statements instead of attach_external_dns_policy, which also allows the record and tag
-  # reads on every hosted zone ("*").
+  # Not attach_external_dns_policy, which allows record and tag reads on every zone.
   policy_name = "${local.name}-external-dns"
   permissions = {
-    # Writes and record reads in the lab zone only.
     ManageLabZoneRecords = {
       actions = [
         "route53:ChangeResourceRecordSets",
@@ -252,7 +232,7 @@ module "external_dns_irsa" {
       ]
       resources = [data.aws_route53_zone.lab.arn]
     }
-    # Finding the zone by name needs the account-wide list; ListHostedZones has no resource-level scope.
+    # ListHostedZones cannot be scoped to a resource.
     ListZones = {
       actions   = ["route53:ListHostedZones"]
       resources = ["*"]
@@ -283,13 +263,12 @@ resource "helm_release" "external_dns" {
   values = [yamlencode({
     provider = { name = "aws" }
 
-    # Route 53 is global, but the AWS SDK still needs a region; IMDS is not reachable from pods.
+    # Route 53 is global, but the SDK still needs a region and pods cannot reach IMDS.
     env = [{ name = "AWS_DEFAULT_REGION", value = var.region }]
 
     domainFilters = [data.aws_route53_zone.lab.name]
 
-    # sync: also deletes records it created once their Ingress is gone. Ownership comes from the
-    # TXT registry: records without a TXT entry for this owner ID are never touched.
+    # sync deletes records whose Ingress is gone, but only ones the TXT registry marks as ours.
     policy     = "sync"
     registry   = "txt"
     txtOwnerId = local.name
