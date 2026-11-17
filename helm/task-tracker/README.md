@@ -42,6 +42,7 @@ The single Postgres replica, without backups, is a lab shortcut ([ADR 0002](../.
 | `image.tag` | `""` (required) | Short Git SHA pushed by `make image` |
 | `api.replicas` | `2` | api replicas |
 | `api.resources` | see `values.yaml` | Requests and limits for the api and migrate containers |
+| `debugEndpoints.enabled` | `false` | `true` sets `ENABLE_DEBUG_ENDPOINTS=true` on the api container (not the migrate Job), mounting `/debug/load/*`. Drills only |
 | `database.name`, `database.user` | `tasks` | Database name and user |
 | `postgres.image` | `postgres:18.6-trixie@sha256:…` | Same as `docker-compose.yml` |
 | `postgres.storage.size` | `10Gi` | Volume size |

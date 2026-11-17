@@ -22,6 +22,9 @@ api:
   # The grace period is derived from it: preStopSleepSeconds + 25.
   preStopSleepSeconds: 15
 
+debugEndpoints:
+  enabled: false                # true mounts the api's /debug/load/* stress endpoints (drills only)
+
 database:
   name: tasks
   user: tasks

@@ -15,6 +15,8 @@ REGISTRY      = $(AWS_ACCOUNT_ID).dkr.ecr.$(REGION).amazonaws.com
 IMAGE_REPO   := eks-platform/api
 TAG          ?= $(shell git rev-parse --short HEAD)
 PLATFORM     ?= linux/amd64
+# Extra flags appended to helm upgrade, for example HELM_ARGS="--set debugEndpoints.enabled=true".
+HELM_ARGS    ?=
 RELEASE      := task-tracker
 NAMESPACE    := tasks
 # Context name written by `aws eks update-kubeconfig` (the cluster ARN). Passed explicitly so
@@ -67,7 +69,7 @@ deploy: check-region ## Install or upgrade the task-tracker release with image t
 	  --kube-context $(KUBE_CONTEXT) --namespace $(NAMESPACE) --create-namespace \
 	  --set image.registry=$(REGISTRY) --set image.tag=$(TAG) --set externalSecrets.region=$(REGION) \
 	  --set ingress.host=$(APP_HOST) \
-	  --wait --timeout 10m
+	  --wait --timeout 10m $(HELM_ARGS)
 
 undeploy: check-region ## Uninstall the task-tracker release, then delete its Postgres PVC (deletes the data)
 	@read -r -p "Uninstall $(RELEASE) and delete its database volume in $(CLUSTER)? [y/N] " answer && [ "$$answer" = y ]

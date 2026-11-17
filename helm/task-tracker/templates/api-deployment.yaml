@@ -36,8 +36,10 @@ spec:
               containerPort: {{ .Values.api.port }}
           env:
             {{- include "task-tracker.dbEnv" . | nindent 12 }}
+            {{- if .Values.debugEndpoints.enabled }}
             - name: ENABLE_DEBUG_ENDPOINTS
-              value: "false"
+              value: "true"
+            {{- end }}
           # Startup ~0.4 s; allow up to 30 s before liveness takes over.
           startupProbe:
             httpGet:

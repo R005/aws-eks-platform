@@ -233,7 +233,7 @@ Order, from an empty account:
 What the targets do:
 
 - **`make image`** refuses to run while `apps/api` has uncommitted changes. It logs Docker in to ECR with a short-lived token (`aws ecr get-login-password`), then `docker buildx build --platform linux/amd64 … --push`. The tag is the short Git SHA of `HEAD`. The nodes are amd64 and this Mac is arm64, so the build runs under emulation. Tags are immutable: pushing the same SHA twice fails, so commit first.
-- **`make deploy`** checks that the tag exists in ECR and builds the public host `tasks.<lab_zone_name>` from the `foundation` output (override with `APP_HOST=…`). It then runs `helm upgrade --install task-tracker helm/task-tracker` with the registry, tag, region and host set on the command line, `--wait` and a 10 minute timeout. Deploy an earlier image with `make deploy TAG=<sha>`.
+- **`make deploy`** checks that the tag exists in ECR and builds the public host `tasks.<lab_zone_name>` from the `foundation` output (override with `APP_HOST=…`). It then runs `helm upgrade --install task-tracker helm/task-tracker` with the registry, tag, region and host set on the command line, `--wait` and a 10 minute timeout. Deploy an earlier image with `make deploy TAG=<sha>`. Extra Helm flags go in `HELM_ARGS`, for example `make deploy HELM_ARGS="--set debugEndpoints.enabled=true"` for a stress drill; a plain `make deploy` turns it off again.
 - **`make undeploy`** asks for confirmation, runs `helm uninstall`, then deletes the Postgres PVC, which deletes its EBS volume and all data.
 
 `deploy` and `undeploy` pass `--kube-context` for the `eks-platform-dev` context (the ARN name that `update-kubeconfig` writes), so they never act on another cluster that happens to be current.
