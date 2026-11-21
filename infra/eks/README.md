@@ -14,6 +14,8 @@ The API endpoint is public, for `kubectl` and CI, and private, for the nodes. Ev
 
 Access uses access entries only, with no `aws-auth` ConfigMap ([ADR 0013](../../docs/adr/0013-eks-access-entries-only.md)). The IAM Identity Center `AdministratorAccess` role gets `AmazonEKSClusterAdminPolicy`. The role is looked up by name pattern, so its ARN never appears in code. Creator admin is off, so access does not depend on who ran the apply.
 
+The GitLab CI role from `foundation` gets `AmazonEKSEditPolicy` scoped to the `tasks` namespace and the Kubernetes group `gitlab-ci-deployers`. The edit policy has no rules for External Secrets resources, so `addons` binds a Role for them to that group. The role is found by name, so `foundation` must be applied first.
+
 `vpc-cni` is installed before the nodes, which never become Ready without it. `kube-proxy` and `coredns` follow at the latest compatible versions. Module defaults are kept for KMS envelope encryption of Secrets and for control plane logs in CloudWatch (90 days).
 
 ## Usage

@@ -55,3 +55,15 @@ variable "admin_permission_set_name" {
   type        = string
   default     = "AdministratorAccess"
 }
+
+variable "app_namespace" {
+  description = "Namespace the CI role may deploy to."
+  type        = string
+  default     = "tasks"
+}
+
+variable "ci_kubernetes_group" {
+  description = "Kubernetes group of the CI role, bound to a Role by the addons stack."
+  type        = string
+  default     = "gitlab-ci-deployers"
+}

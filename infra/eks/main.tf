@@ -42,6 +42,11 @@ data "aws_iam_roles" "sso_admin" {
   }
 }
 
+# Created by the foundation stack, found by name so this stack does not read its state.
+data "aws_iam_role" "ci" {
+  name = "${local.name}-gitlab-ci"
+}
+
 data "aws_partition" "current" {}
 
 module "eks" {
@@ -76,6 +81,24 @@ module "eks" {
           policy_arn = "arn:${data.aws_partition.current.partition}:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
           access_scope = {
             type = "cluster"
+          }
+        }
+      }
+    }
+
+    gitlab_ci = {
+      principal_arn = data.aws_iam_role.ci.arn
+
+      # The edit policy does not cover external-secrets.io; the addons stack binds a Role in the app
+      # namespace to this group for ExternalSecret and SecretStore.
+      kubernetes_groups = [var.ci_kubernetes_group]
+
+      policy_associations = {
+        edit = {
+          policy_arn = "arn:${data.aws_partition.current.partition}:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
+          access_scope = {
+            type       = "namespace"
+            namespaces = [var.app_namespace]
           }
         }
       }
