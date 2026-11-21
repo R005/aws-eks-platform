@@ -16,6 +16,8 @@ Every controller that calls AWS gets its own IRSA role, trusted only for its exa
 
 The Load Balancer Controller installs a mutating webhook for Services, so the other releases that create Services wait for it.
 
+The stack also creates the app's `tasks` namespace, because the CI role can only work inside it and cannot create namespaces. A Role there lets the `gitlab-ci-deployers` group manage `ExternalSecret` and `SecretStore` objects, which `AmazonEKSEditPolicy` does not cover.
+
 ## Usage
 
 ```bash

@@ -59,3 +59,15 @@ variable "domain_name" {
     error_message = "domain_name must be a lowercase domain without a trailing dot or the lab. prefix, for example example.com."
   }
 }
+
+variable "app_namespace" {
+  description = "App namespace, created here so CI can deploy without creating namespaces."
+  type        = string
+  default     = "tasks"
+}
+
+variable "ci_kubernetes_group" {
+  description = "Kubernetes group of the CI role, set on its access entry by the eks stack."
+  type        = string
+  default     = "gitlab-ci-deployers"
+}

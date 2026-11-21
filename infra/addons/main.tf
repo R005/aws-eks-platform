@@ -283,3 +283,43 @@ resource "helm_release" "external_dns" {
   # The chart creates a Service; the Load Balancer Controller webhook must be ready first.
   depends_on = [helm_release.aws_load_balancer_controller]
 }
+
+# Created here because the CI role can only work inside it and cannot create namespaces.
+resource "kubernetes_namespace_v1" "app" {
+  metadata {
+    name = var.app_namespace
+  }
+}
+
+# AmazonEKSEditPolicy has no rules for external-secrets.io, so the CI role gets this on top.
+resource "kubernetes_role_v1" "ci_external_secrets" {
+  metadata {
+    name      = "ci-external-secrets"
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
+  }
+
+  rule {
+    api_groups = ["external-secrets.io"]
+    resources  = ["externalsecrets", "secretstores"]
+    verbs      = ["get", "list", "watch", "create", "update", "patch", "delete"]
+  }
+}
+
+resource "kubernetes_role_binding_v1" "ci_external_secrets" {
+  metadata {
+    name      = "ci-external-secrets"
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "Role"
+    name      = kubernetes_role_v1.ci_external_secrets.metadata[0].name
+  }
+
+  subject {
+    kind      = "Group"
+    name      = var.ci_kubernetes_group
+    api_group = "rbac.authorization.k8s.io"
+  }
+}

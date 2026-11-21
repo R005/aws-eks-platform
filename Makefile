@@ -60,7 +60,7 @@ deploy: check-region ## Install or upgrade the task-tracker release with image t
 	@aws ecr describe-images --region $(REGION) --repository-name $(IMAGE_REPO) --image-ids imageTag=$(TAG) >/dev/null 2>&1 \
 	  || { echo "Image $(IMAGE_REPO):$(TAG) is not in ECR: run make image, or pass TAG=<pushed-sha>" >&2; exit 1; }
 	helm upgrade --install $(RELEASE) helm/task-tracker \
-	  --kube-context $(KUBE_CONTEXT) --namespace $(NAMESPACE) --create-namespace \
+	  --kube-context $(KUBE_CONTEXT) --namespace $(NAMESPACE) \
 	  --set image.registry=$(REGISTRY) --set image.tag=$(TAG) --set externalSecrets.region=$(REGION) \
 	  --set ingress.host=$(APP_HOST) \
 	  --wait --timeout 10m $(HELM_ARGS)
