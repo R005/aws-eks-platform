@@ -134,7 +134,7 @@ The ALB and its DNS record take a few minutes on the first deploy.
 
 Merge request pipelines run ruff, `terraform fmt -check`, `helm lint`, the unit tests, an image build and a Trivy scan, with no AWS access. Pipelines on `main` run the same, push the scanned image to ECR tagged with `$CI_COMMIT_SHORT_SHA`, and offer a manual `deploy-dev` job that runs `helm upgrade --install` with the same values as `make deploy` and rolls back on failure. The image is built once with rootless BuildKit as an OCI layout and passed between jobs as an artifact, so the pushed digest is the scanned one. Trivy fails the pipeline on HIGH or CRITICAL vulnerabilities that have a fix.
 
-Jobs on `main` get AWS credentials through GitLab OIDC ([ADR 0016](docs/adr/0016-ci-authentication-with-gitlab-oidc.md)). Set these protected CI/CD variables: `AWS_ACCOUNT_ID` (masked), `AWS_REGION`, `AWS_ROLE_ARN` (masked, from `terraform -chdir=infra/foundation output -raw ci_role_arn`) and `APP_HOST` (masked). The CI image tag has 8 characters, `make image` uses 7; `make deploy TAG=<sha>` accepts either.
+Jobs on `main` get AWS credentials through GitLab OIDC ([ADR 0016](docs/adr/0016-ci-authentication-with-gitlab-oidc.md)). Set these protected CI/CD variables: `AWS_ACCOUNT_ID` (masked), `AWS_REGION`, `AWS_ROLE_ARN` (masked, from `terraform -chdir=infra/foundation output -raw ci_role_arn`) and `APP_HOST` (masked). `make image` uses the same 8-character short SHA, so local and CI tags match.
 
 `deploy-dev` only works while the platform is up, and the first run of a session needs no local `make deploy` because `addons` creates the namespace.
 

@@ -9,7 +9,7 @@ REGION  ?= $(or $(AWS_REGION),$(AWS_DEFAULT_REGION),$(shell aws configure get re
 AWS_ACCOUNT_ID = $(eval AWS_ACCOUNT_ID := $(shell aws sts get-caller-identity --query Account --output text))$(AWS_ACCOUNT_ID)
 REGISTRY      = $(AWS_ACCOUNT_ID).dkr.ecr.$(REGION).amazonaws.com
 IMAGE_REPO   := eks-platform/api
-TAG          ?= $(shell git rev-parse --short HEAD)
+TAG          ?= $(shell git rev-parse --short=8 HEAD)
 PLATFORM     ?= linux/amd64
 # Extra helm upgrade flags, for example HELM_ARGS="--set debugEndpoints.enabled=true".
 HELM_ARGS    ?=
