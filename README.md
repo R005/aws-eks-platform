@@ -39,17 +39,18 @@ An EKS platform built with Terraform and Helm. It runs a small FastAPI task trac
   S3 bucket: Terraform state (S3 native locking)
 ```
 
-GitLab CI and kube-prometheus-stack are not built yet. Decisions are recorded in [`docs/adr/`](docs/adr/README.md).
+kube-prometheus-stack is not built yet. Decisions are recorded in [`docs/adr/`](docs/adr/README.md).
 
 ```text
 apps/api/             FastAPI service, Dockerfile, OPERATIONS.md
 helm/task-tracker/    Chart for the api, Postgres, migrations, Ingress and secrets
 infra/bootstrap/      State bucket and KMS key (kept)
-infra/foundation/     ECR, database secret, lab.<domain> zone and certificate (kept)
+infra/foundation/     ECR, database secret, lab.<domain> zone and certificate, CI role (kept)
 infra/network/        VPC, subnets, NAT Gateway
 infra/eks/            Cluster, node group, OIDC provider, access entries
-infra/addons/         EBS CSI, Load Balancer Controller, External Secrets, metrics-server, ExternalDNS
+infra/addons/         EBS CSI, Load Balancer Controller, External Secrets, metrics-server, ExternalDNS, tasks namespace
 scripts/              check-cluster-clean.sh, run by make down
+.gitlab-ci.yml        Pipeline: lint, test, build, scan, push, deploy
 docs/adr/             Architecture Decision Records
 ```
 
@@ -129,6 +130,14 @@ curl -s https://tasks.lab.<domain>/readyz
 
 The ALB and its DNS record take a few minutes on the first deploy.
 
+## CI/CD
+
+Merge request pipelines run ruff, `terraform fmt -check`, `helm lint`, the unit tests, an image build and a Trivy scan, with no AWS access. Pipelines on `main` run the same, push the scanned image to ECR tagged with `$CI_COMMIT_SHORT_SHA`, and offer a manual `deploy-dev` job that runs `helm upgrade --install` with the same values as `make deploy` and rolls back on failure. The image is built once with rootless BuildKit as an OCI layout and passed between jobs as an artifact, so the pushed digest is the scanned one. Trivy fails the pipeline on HIGH or CRITICAL vulnerabilities that have a fix.
+
+Jobs on `main` get AWS credentials through GitLab OIDC ([ADR 0016](docs/adr/0016-ci-authentication-with-gitlab-oidc.md)). Set these protected CI/CD variables: `AWS_ACCOUNT_ID` (masked), `AWS_REGION`, `AWS_ROLE_ARN` (masked, from `terraform -chdir=infra/foundation output -raw ci_role_arn`) and `APP_HOST` (masked). The CI image tag has 8 characters, `make image` uses 7; `make deploy TAG=<sha>` accepts either.
+
+`deploy-dev` only works while the platform is up, and the first run of a session needs no local `make deploy` because `addons` creates the namespace.
+
 ## Cost and teardown
 
 Approximate us-east-1 on-demand prices with everything running:
@@ -164,7 +173,7 @@ make down
 - [x] M5: `addons` (EBS CSI, Load Balancer Controller, External Secrets, metrics-server)
 - [x] M6: api, Dockerfile, Compose, `foundation` (ECR, secret), `make image`
 - [x] M7: `task-tracker` chart and `make deploy`
-- [ ] M8: GitLab CI: lint, test, build, scan, push, deploy
+- [x] M8: GitLab CI: lint, test, build, scan, push, deploy
 - [x] M9: HTTPS at `tasks.lab.<domain>`
 - [ ] M10: kube-prometheus-stack, dashboards, alerts
 - [ ] M11: move PostgreSQL to RDS
@@ -172,7 +181,7 @@ make down
 
 ## Security
 
-- No long-lived AWS credentials. People use IAM Identity Center, pods use IRSA ([ADR 0005](docs/adr/0005-irsa-for-pod-aws-access.md)), and CI will use short-lived credentials (decided at M8).
+- No long-lived AWS credentials. People use IAM Identity Center, pods use IRSA ([ADR 0005](docs/adr/0005-irsa-for-pod-aws-access.md)), and CI uses GitLab OIDC on `main` only ([ADR 0016](docs/adr/0016-ci-authentication-with-gitlab-oidc.md)).
 - Secrets live in Secrets Manager and reach pods through External Secrets ([ADR 0004](docs/adr/0004-external-secrets-operator.md)), never through Git, Helm values or CI logs.
 - Each controller has its own IAM role, scoped to its ServiceAccount.
 - Nodes run in private subnets; only the ALB is internet-facing.

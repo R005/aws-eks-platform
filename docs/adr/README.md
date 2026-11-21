@@ -31,3 +31,4 @@ Status: Proposed, YYYY-MM-DD
 | [0013](0013-eks-access-entries-only.md) | Cluster access via EKS access entries only (API mode) | Accepted |
 | [0014](0014-ingress-via-aws-load-balancer-controller.md) | Ingress via AWS Load Balancer Controller | Accepted |
 | [0015](0015-fast-forward-merges-without-squash.md) | Fast-forward merges without squash | Accepted |
+| [0016](0016-ci-authentication-with-gitlab-oidc.md) | CI authentication with GitLab OIDC | Accepted |
