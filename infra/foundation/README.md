@@ -1,6 +1,6 @@
 # foundation
 
-Resources that outlive the cluster: the `eks-platform/api` ECR repository, the database password in Secrets Manager, the `lab.<domain>` hosted zone and its ACM certificate. Applied once and kept; `make up` and `make down` do not touch it.
+Resources that outlive the cluster: the `eks-platform/api` ECR repository, the database password in Secrets Manager, the `lab.<domain>` hosted zone and its ACM certificate, and the GitLab OIDC provider with the CI role. Applied once and kept; `make up` and `make down` do not touch it.
 
 ## Design
 
@@ -12,10 +12,12 @@ The zone covers `lab.<domain>` only; the parent domain stays at its own DNS prov
 
 The certificate covers `lab.<domain>` and `*.lab.<domain>` and lives in the cluster's region. The Load Balancer Controller finds it by the Ingress host, so nothing needs its ARN ([ADR 0014](../../docs/adr/0014-ingress-via-aws-load-balancer-controller.md)). ACM renews it as long as the validation CNAME stays in the zone.
 
+GitLab CI assumes the `eks-platform-dev-gitlab-ci` role with an OIDC token, so no AWS keys are stored in GitLab ([ADR 0016](../../docs/adr/0016-ci-authentication-with-gitlab-oidc.md)). The trust policy accepts only the `https://gitlab.com` audience and pipelines on `main` of `gitlab_project_path`. The role can push to the api repository and describe the cluster; its Kubernetes permissions come from an access entry in the `eks` stack. Its ARN is the `ci_role_arn` output.
+
 ## Usage
 
 ```bash
-cp terraform.tfvars.example terraform.tfvars   # set owner and domain_name
+cp terraform.tfvars.example terraform.tfvars   # set owner, domain_name and gitlab_project_path
 cp backend.hcl.example backend.hcl             # replace <account-id>
 terraform init -backend-config=backend.hcl
 terraform plan -out=tfplan

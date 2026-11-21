@@ -1,3 +1,4 @@
-region      = "us-east-1"
-owner       = "<owner>"
-domain_name = "<domain>" # parent domain; the hosted zone is lab.<domain>
+region              = "us-east-1"
+owner               = "<owner>"
+domain_name         = "<domain>" # parent domain; the hosted zone is lab.<domain>
+gitlab_project_path = "<group>/aws-eks-platform"

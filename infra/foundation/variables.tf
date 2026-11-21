@@ -41,3 +41,13 @@ variable "domain_name" {
     error_message = "domain_name must be a lowercase domain without a trailing dot or the lab. prefix, for example example.com."
   }
 }
+
+variable "gitlab_project_path" {
+  description = "GitLab project (group/project) whose main branch may assume the CI role."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)+$", var.gitlab_project_path))
+    error_message = "gitlab_project_path must look like group/project."
+  }
+}
