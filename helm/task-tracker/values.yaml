@@ -25,7 +25,7 @@ debugEndpoints:
 
 database:
   name: tasks
-  user: task_tracker
+  user: tasks
   port: 5432
 
 postgres:
