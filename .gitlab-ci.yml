@@ -14,6 +14,7 @@ stages: [lint, test, build, scan, push, deploy]
 variables:
   # Tags are for readers; the digest is what gets pulled.
   ALPINE_IMAGE: alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
+  UV_IMAGE: ghcr.io/astral-sh/uv:0.13.5-python3.13-trixie-slim@sha256:331fbb158258608b9391e802305a9a2c9e42d689435c1d98706647122a122ab0
   AWS_CLI_IMAGE: public.ecr.aws/aws-cli/aws-cli:2.42.1@sha256:b0102d2269f87d8531d931c1a59e248101ace586886e6c077058d94c1c37b846
   HELM_VERSION: v4.3.2
   HELM_SHA256: d1c0278d46beab79582d7e50f5b3dc206944ba8e577cde618513fd07daa53983
@@ -84,9 +85,9 @@ helm-lint:
       --set image.registry=registry.example --set image.tag=lint
       --set externalSecrets.region=us-east-1 --set ingress.host=tasks.lab.example.com
 
-unit-tests:
+.uv:
   stage: test
-  image: ghcr.io/astral-sh/uv:0.13.5-python3.13-trixie-slim@sha256:331fbb158258608b9391e802305a9a2c9e42d689435c1d98706647122a122ab0
+  image: $UV_IMAGE
   variables:
     UV_CACHE_DIR: $CI_PROJECT_DIR/.uv-cache
     UV_PYTHON_DOWNLOADS: never
@@ -94,14 +95,37 @@ unit-tests:
     key:
       files: [apps/api/uv.lock]
     paths: [.uv-cache]
-  script:
+  before_script:
     - cd apps/api
     - uv sync --frozen
+
+unit-tests:
+  extends: .uv
+  script:
     - uv run pytest --junitxml=../../junit.xml
   artifacts:
     when: always
     reports:
       junit: junit.xml
+
+# The unit tests build their schema from the models, so only this job catches a missing migration.
+migration-check:
+  extends: .uv
+  services:
+    # Same as postgres.image in the chart.
+    - name: postgres:18.6-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+      alias: postgres
+  variables:
+    POSTGRES_DB: tasks
+    POSTGRES_USER: tasks
+    POSTGRES_PASSWORD: ci-only
+    DB_HOST: postgres
+    DB_NAME: $POSTGRES_DB
+    DB_USER: $POSTGRES_USER
+    DB_PASSWORD: $POSTGRES_PASSWORD
+  script:
+    - uv run alembic upgrade head
+    - uv run alembic check
 
 # Rootless BuildKit needs no Docker daemon or privileged mode. The image leaves this job as an
 # OCI image layout artifact, so scan and push work on the same bytes and nothing is rebuilt.
