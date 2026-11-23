@@ -1,0 +1,18 @@
+# krb5 CVEs in the distroless base. Debian fixed them in 1.21.3-5+deb13u2, but the newest
+# distroless python3-debian13 still ships deb13u1. Low risk: most affect the KDC/kadmind
+# servers, which are not in the image, and the app does not use Kerberos.
+# Remove once distroless ships deb13u2 and the base digest is bumped.
+CVE-2026-107364 exp:2026-12-07
+CVE-2026-112315 exp:2026-12-07
+CVE-2026-112316 exp:2026-12-07
+CVE-2026-112317 exp:2026-12-07
+CVE-2026-112318 exp:2026-12-07
+CVE-2026-112319 exp:2026-12-07
+CVE-2026-112320 exp:2026-12-07
+CVE-2026-112321 exp:2026-12-07
+CVE-2026-112322 exp:2026-12-07
+CVE-2026-112323 exp:2026-12-07
+CVE-2026-118380 exp:2026-12-07
+CVE-2026-119079 exp:2026-12-07
+CVE-2026-71199 exp:2026-12-07
+CVE-2026-71200 exp:2026-12-07
