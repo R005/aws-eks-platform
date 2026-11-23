@@ -1,9 +1,14 @@
-{{- define "task-tracker.labels" -}}
-helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
+{{/* Without the chart version and image tag, so a release doesn't restart pods using it. */}}
+{{- define "task-tracker.podLabels" -}}
 app.kubernetes.io/name: {{ .Chart.Name }}
 app.kubernetes.io/instance: {{ .Release.Name }}
-app.kubernetes.io/version: {{ .Values.image.tag | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}
+
+{{- define "task-tracker.labels" -}}
+helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
+{{ include "task-tracker.podLabels" . }}
+app.kubernetes.io/version: {{ .Values.image.tag | quote }}
 {{- end }}
 
 {{/* Call with (dict "ctx" $ "component" "api"). Never change these: selectors are immutable. */}}

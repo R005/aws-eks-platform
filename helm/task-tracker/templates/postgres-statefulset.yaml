@@ -15,7 +15,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "task-tracker.labels" . | nindent 8 }}
+        {{- include "task-tracker.podLabels" . | nindent 8 }}
         app.kubernetes.io/component: postgres
     spec:
       automountServiceAccountToken: false
