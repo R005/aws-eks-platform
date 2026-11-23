@@ -9,7 +9,7 @@ workflow:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-stages: [lint, test, build, scan, push, deploy]
+stages: [lint, test, build, scan, push, deploy, verify]
 
 variables:
   # Tags are for readers; the digest is what gets pulled.
@@ -213,3 +213,14 @@ deploy-dev:
       --set image.registry="$REGISTRY" --set image.tag="$CI_COMMIT_SHORT_SHA"
       --set externalSecrets.region="$AWS_REGION" --set ingress.host="$APP_HOST"
       --wait --rollback-on-failure --timeout 10m
+
+smoke-test:
+  stage: verify
+  image: $UV_IMAGE
+  needs: [deploy-dev]
+  # Shared with deploy-dev, so another deploy can't start while this runs.
+  resource_group: dev
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - python3 -u scripts/smoke_test.py

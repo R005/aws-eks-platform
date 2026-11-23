@@ -43,11 +43,11 @@ infra/bootstrap/              S3 state bucket + KMS key (kept)
 infra/foundation/             ECR repository, database secret, lab zone + ACM certificate, GitLab CI role (kept)
 infra/{network,eks,addons}/   platform stacks, created by make up and destroyed by make down
 infra/modules/                reusable Terraform modules (planned)
-scripts/                      check-cluster-clean.sh (safety check for make down)
+scripts/                      check-cluster-clean.sh (safety check for make down), smoke_test.py (post-deploy check)
 docs/adr/                     Architecture Decision Records
 Makefile                      make up/down (platform), make image/deploy/undeploy (app)
 docker-compose.yml            local stack: postgres, migrate, api
-.gitlab-ci.yml                CI/CD pipeline: lint, test, build, scan, push, manual deploy
+.gitlab-ci.yml                CI/CD pipeline: lint, test, build, scan, push, manual deploy, smoke test
 ```
 
 Each Terraform stack is one root module with its own state. `bootstrap` and `foundation` are applied once and kept. `make up` applies `network → eks → addons`; `make down` destroys them in reverse after `make undeploy` (keep `bootstrap`, `foundation` and the Route 53 zone).

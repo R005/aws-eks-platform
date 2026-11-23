@@ -49,8 +49,8 @@ infra/foundation/     ECR, database secret, lab.<domain> zone and certificate, C
 infra/network/        VPC, subnets, NAT Gateway
 infra/eks/            Cluster, node group, OIDC provider, access entries
 infra/addons/         EBS CSI, Load Balancer Controller, External Secrets, metrics-server, ExternalDNS, tasks namespace
-scripts/              check-cluster-clean.sh, run by make down
-.gitlab-ci.yml        Pipeline: lint, test, build, scan, push, deploy
+scripts/              check-cluster-clean.sh, run by make down; smoke_test.py, run by CI after a deploy
+.gitlab-ci.yml        Pipeline: lint, test, build, scan, push, deploy, verify
 docs/adr/             Architecture Decision Records
 ```
 
@@ -132,7 +132,7 @@ The ALB and its DNS record take a few minutes on the first deploy.
 
 ## CI/CD
 
-Merge request pipelines run ruff, `terraform fmt -check`, `helm lint`, the unit tests, a migration check, an image build and a Trivy scan, with no AWS access. Pipelines on `main` run the same, push the scanned image to ECR tagged with `$CI_COMMIT_SHORT_SHA`, and offer a manual `deploy-dev` job that runs `helm upgrade --install` with the same values as `make deploy` and rolls back on failure. The image is built once with rootless BuildKit as an OCI layout and passed between jobs as an artifact, so the pushed digest is the scanned one. The migration check runs `alembic upgrade head` and `alembic check` against a Postgres service container, and fails when the models and migrations differ. Trivy fails the pipeline on HIGH or CRITICAL vulnerabilities that have a fix.
+Merge request pipelines run ruff, `terraform fmt -check`, `helm lint`, the unit tests, a migration check, an image build and a Trivy scan, with no AWS access. Pipelines on `main` run the same, push the scanned image to ECR tagged with `$CI_COMMIT_SHORT_SHA`, and offer a manual `deploy-dev` job that runs `helm upgrade --install` with the same values as `make deploy` and rolls back on failure. After it, `smoke-test` calls the api through the public URL (`scripts/smoke_test.py`) and fails the pipeline if a call fails; it does not roll back. The image is built once with rootless BuildKit as an OCI layout and passed between jobs as an artifact, so the pushed digest is the scanned one. The migration check runs `alembic upgrade head` and `alembic check` against a Postgres service container, and fails when the models and migrations differ. Trivy fails the pipeline on HIGH or CRITICAL vulnerabilities that have a fix.
 
 Jobs on `main` get AWS credentials through GitLab OIDC ([ADR 0016](docs/adr/0016-ci-authentication-with-gitlab-oidc.md)). Set these protected CI/CD variables: `AWS_ACCOUNT_ID` (masked), `AWS_REGION`, `AWS_ROLE_ARN` (masked, from `terraform -chdir=infra/foundation output -raw ci_role_arn`) and `APP_HOST` (masked). `make image` uses the same 8-character short SHA, so local and CI tags match.
 
